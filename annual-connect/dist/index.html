@@ -29,8 +29,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 p{margin:0}
 
 #stage{position:fixed;inset:0;background:
-  radial-gradient(70% 16% at 42% 30%, rgba(214,196,168,.13) 0%, rgba(214,196,168,0) 70%),
-  radial-gradient(90% 60% at 18% 22%, rgba(120,110,96,.14) 0%, rgba(120,110,96,0) 60%),
+  radial-gradient(90% 60% at 18% 18%, rgba(120,110,96,.08) 0%, rgba(120,110,96,0) 60%),
   radial-gradient(70% 50% at 85% 90%, rgba(60,56,52,.35) 0%, rgba(60,56,52,0) 60%),
   var(--bg);touch-action:none}
 #stage.hover{cursor:pointer}
@@ -48,7 +47,7 @@ p{margin:0}
 .chrome>*{pointer-events:auto}
 .brand{position:absolute;left:max(28px,env(safe-area-inset-left,0px));top:max(22px,env(safe-area-inset-top,0px));display:flex;align-items:center;gap:14px;font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--silver)}
 .brand i{width:22px;height:1px;background:var(--crimson)}
-.meta{position:absolute;right:max(28px,env(safe-area-inset-right,0px));top:max(22px,env(safe-area-inset-top,0px));display:flex;align-items:center;gap:22px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--quiet)}
+.meta{text-shadow:0 1px 12px rgba(0,0,0,.8);position:absolute;right:max(28px,env(safe-area-inset-right,0px));top:max(22px,env(safe-area-inset-top,0px));display:flex;align-items:center;gap:22px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--quiet)}
 .meta b{font-weight:400;color:var(--ivory);font-variant-numeric:tabular-nums;letter-spacing:.06em}
 .meta .chip{padding:5px 10px;border:1px solid var(--line);border-radius:2px;color:var(--silver)}
 .meta button{padding:6px 0;border-bottom:1px solid transparent;color:var(--silver)}
@@ -59,12 +58,12 @@ p{margin:0}
 #title.away{opacity:0;transform:translateY(-10px);pointer-events:none}
 #title span{display:block}
 
-nav.bottom{position:absolute;left:max(28px,env(safe-area-inset-left,0px));bottom:max(22px,env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:0;font-size:15px;font-weight:300}
+nav.bottom{text-shadow:0 1px 12px rgba(0,0,0,.8);position:absolute;left:max(28px,env(safe-area-inset-left,0px));bottom:max(22px,env(safe-area-inset-bottom,0px));display:flex;align-items:center;gap:0;font-size:15px;font-weight:300}
 nav.bottom button{padding:8px 18px;border-left:1px solid var(--line);color:var(--silver)}
 nav.bottom button:first-child{padding-left:0;border-left:0}
 nav.bottom button:hover,nav.bottom button[aria-pressed="true"]{color:var(--ivory)}
 nav.bottom button[aria-pressed="true"]{text-decoration:underline;text-underline-offset:6px;text-decoration-color:var(--crimson)}
-.tools{position:absolute;right:max(28px,env(safe-area-inset-right,0px));bottom:max(22px,env(safe-area-inset-bottom,0px));display:flex;gap:18px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--quiet)}
+.tools{text-shadow:0 1px 12px rgba(0,0,0,.8);position:absolute;right:max(28px,env(safe-area-inset-right,0px));bottom:max(22px,env(safe-area-inset-bottom,0px));display:flex;gap:18px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--quiet)}
 .tools button{padding:6px 0;border-bottom:1px solid transparent}
 .tools button:hover{color:var(--ivory);border-bottom-color:var(--line)}
 .tools button[aria-pressed="true"]{color:var(--ivory)}
@@ -444,67 +443,68 @@ window.AC = window.AC || {};
    Every contribution gets a home position derived only from its id and theme, so the world is stable across
    revisits, resizes, selections and new arrivals.
 
-   Composition follows the reference: one broad ribbon of portraits that starts large at lower left, sweeps up
-   and away to the upper right and thins into the distance. Themes occupy stretches along the ribbon, so
-   neighbourhoods survive as reaches of the same stream. A sparse halo of small distant prints sits off the band. */
+   Composition follows the reference: a string of portraits rises out of the horizon on the far left, small and
+   quiet, and flows toward the viewer on the right, where it widens into layers and the nearest prints are large.
+   Themes occupy stretches along the string, so neighbourhoods survive as reaches of the same flow. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
   const { hashStr, mulberry32 } = AC.data;
 
-  // Theme order along the ribbon (near end first) and the stretch each occupies, as a range of t in [0,1].
-  const ORDER = ['collaboration', 'customers', 'colleagues', 'execution', 'learning', 'listening'];
+  // Theme order along the string, from the horizon (far) to the viewer (near).
+  const ORDER = ['listening', 'learning', 'execution', 'colleagues', 'customers', 'collaboration'];
   const STRETCH = {};
   ORDER.forEach((id, i) => { STRETCH[id] = [i/ORDER.length, (i + 1)/ORDER.length]; });
 
-  // The ribbon's spine. t = 0 is the near end (lower left, close to camera), t = 1 the far end (upper right, deep).
+  // The string's spine. t = 0 at the horizon (far left), t = 1 nearest the viewer (lower right).
   function spine(t){
-    const x = -20 + 54*t;
-    const y = -4 + 10*t + 1.8*Math.sin(t*Math.PI*1.25);
-    const z = 8 - 36*t;
+    const x = -58 + 72*t;
+    const z = -56 + 72*t;
+    const y = 1.4*(1 - t) + 3.4*Math.sin(t*Math.PI*1.7 - 0.4)*Math.pow(t, 0.4) - 2.6*t*t;
     return { x, y, z };
   }
-  // Local frame of the spine at t: tangent, and a "normal" that keeps the band facing the camera.
-  function tangent(t){ const a = spine(Math.max(0, t - 0.01)), b = spine(Math.min(1, t + 0.01)); const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z; const l = Math.hypot(dx, dy, dz) || 1; return { x: dx/l, y: dy/l, z: dz/l }; }
 
   function homeFor(contribution){
     const rng = mulberry32(hashStr(contribution.id));
     const theme = contribution.themeIds[0];
     const st = STRETCH[theme] || [0, 1];
-    // Position along the ribbon: inside the theme's stretch, with soft overlap into neighbours.
     let t = st[0] + (st[1] - st[0])*rng() + (rng() - 0.5)*0.12;
     t = Math.min(1, Math.max(0, t));
-    const halo = rng() < 0.1;                           // a few quiet prints off the band
-    const s = spine(t), tg = tangent(t);
-    // Band half-width grows toward the near end; perpendicular scatter is tight, along-band scatter is loose.
-    const width = (2.2 + 3.2*(1 - t)) * (halo ? 2.8 : 1);
-    const u = (rng() + rng() - 1);                      // triangular, denser at the centre line
-    const v = (rng() - 0.5)*1.4;                        // depth jitter through the band
-    // Perpendicular directions: screen-up-ish and the camera axis.
-    const px = -tg.z, pz = tg.x;                        // horizontal perpendicular to the tangent (in the xz plane)
-    const x = s.x + u*width*0.55*px + v*1.6*tg.x*0 + (rng() - 0.5)*1.2;
-    const y = s.y + u*width*1.0 + (rng() - 0.5)*0.8;
-    const z = s.z + u*width*0.25*pz + v*2.4 + (halo ? -6*rng() : 0);
-    // Scale: large at the near end, modest in the middle, small and quiet far away. A few deterministic heroes.
-    const near = 1 - t;
+    const s = spine(t);
+    const halo = rng() < 0.08;                                  // a few quiet prints drifting off the string
+    const hasPhoto = !!contribution.portrait;
+    const fore = !halo && hasPhoto && t > 0.78 && rng() < 0.22;  // the nearest layer, soft and large
+    // The string is thin at the horizon and opens into layers near the viewer.
+    const width = 1.0 + 7.5*Math.pow(t, 1.6);
+    const u = (rng() + rng() - 1);                              // triangular: denser along the centre line
+    const v = (rng() - 0.5);
+    let x = s.x + (rng() - 0.5)*(1 + 3*t);
+    const upper = !halo && t > 0.5 && rng() < 0.33;           // a second strand rising to the upper right
+    let y = s.y + u*width*(halo ? 2.6 : 1) + (upper ? 3.2 + 2.5*rng() : 0);
+    let z = s.z + v*(1.5 + 5*t) - (halo ? 10*rng() : 0);
+    if (fore){ z += 6 + 7*rng(); y -= 2.2; x += 1 + 3*rng(); }
+    if (halo){ y = Math.max(-7, Math.min(6.5, y)); }
+    // Scale: tiny at the horizon, large near the viewer. A few deterministic heroes.
     const hero = rng();
-    const base = 0.62 + 0.9*near*near;
-    const scale = halo ? base*0.6 : hero > 0.975 ? base*2.0 : hero > 0.9 ? base*1.45 : base*(0.85 + rng()*0.3);
+    const base = (0.55 + 1.25*Math.pow(t, 2.2))*(fore ? 1.35 : 1)*(halo ? 0.7 : 1);
+    const scale = !hasPhoto ? base*(0.8 + rng()*0.25) : hero > 0.975 ? base*1.9 : hero > 0.9 ? base*1.4 : base*(0.85 + rng()*0.3);
     const aspect = rng() > 0.5 ? 0.8 : 0.667;
     const drift = { ax: 0.12 + rng()*0.1, ay: 0.08 + rng()*0.08, px: rng()*Math.PI*2, py: rng()*Math.PI*2, sx: 0.06 + rng()*0.04, sy: 0.05 + rng()*0.04 };
-    return { x, y, z, t, scale, aspect, drift, halo };
+    return { x, y, z, t, scale, aspect, drift, halo, fore };
   }
 
-  // Camera path for the guided overview: a slow glide alongside the ribbon. k in [0,1] from near end to far end.
+  // Camera path for the guided overview: a slow drift along the near reach of the string, looking back toward the
+  // horizon. k in [0,1]. The horizon stays in frame at the left throughout.
   function cameraAt(k){
-    const t = 0.08 + 0.62*k;                            // never run past the far tail
-    const s = spine(t);
-    const look = { x: s.x + 6.5, y: s.y + 2.6, z: s.z };
-    const pos = { x: s.x - 2 + 4*k, y: s.y + 2.6 + 1.4*k, z: s.z + 24 - 3*k };
+    const pos = { x: 6 + 6*k, y: 2.6 - 0.8*k, z: 38 - 6*k };
+    const look = { x: -7 + 8*k, y: 0.8 - 0.6*k, z: -12 + 8*k };
     return { pos, look };
   }
 
-  AC.layout = { homeFor, spine, cameraAt, ORDER };
+  // Horizon: a planet limb far behind the string, low and to the left.
+  const HORIZON = { center: { x: -108, y: -186, z: -150 }, radius: 176 };
+
+  AC.layout = { homeFor, spine, cameraAt, ORDER, HORIZON };
 })(window.AC);
 
 /* Annual Connect — presentation state machine and guided sequencer.
@@ -653,26 +653,29 @@ window.AC = window.AC || {};
     precision highp float;
     uniform sampler2D uPhotos; uniform sampler2D uInitials; uniform float uPhotoOK; uniform float uDim; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFog; uniform float uTime;
     varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec3 vState; varying float vZ;
-    float dither(vec2 p){ return fract(52.9829189*fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+    vec3 samp(vec2 local, float usePhoto){ vec2 uv = vRect.xy + clamp(local, 0.0, 1.0)*vRect.zw; return mix(texture2D(uInitials, uv).rgb, texture2D(uPhotos, uv).rgb, usePhoto); }
     void main(){
       float alpha = vState.z;
       if (alpha < 0.03) discard;
-      vec2 uv = vRect.xy + vUv*vRect.zw;
       float usePhoto = (vAtlas < 0.5 && uPhotoOK > 0.5) ? 1.0 : 0.0;
-      vec3 c = mix(texture2D(uInitials, uv).rgb, texture2D(uPhotos, uv).rgb, usePhoto);
+      float keep = clamp(vState.x, 0.0, 1.0);
+      // the nearest prints fall out of focus, like the foreground of a photograph; a featured print never does
+      float nearB = smoothstep(17.0, 7.0, vZ)*(1.0 - keep);
+      vec3 c = samp(vUv, usePhoto);
+      if (nearB > 0.01){ vec2 o = vec2(0.028, 0.02)*nearB; c = (c*2.0 + samp(vUv + o, usePhoto) + samp(vUv - o, usePhoto) + samp(vUv + vec2(o.x, -o.y), usePhoto) + samp(vUv - vec2(o.x, -o.y), usePhoto))/6.0; }
       // per-print tonal variation so a repeated sample portrait reads as a different print
       c = (c - 0.5)*vTone.y + 0.5; c *= vTone.x;
       // soft inner vignette, like a print under glass
       vec2 e = abs(vUv - 0.5)*2.0; float vig = 1.0 - 0.22*pow(max(e.x, e.y), 4.0); c *= vig;
       // hairline edge
-      float edge = step(0.988, max(e.x, e.y)); c = mix(c, vec3(0.78, 0.75, 0.70), edge*0.35);
+      float edge = step(0.988, max(e.x, e.y)); c = mix(c, vec3(0.78, 0.75, 0.70), edge*0.35*(1.0 - nearB));
+      c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11)))*0.72 + 0.06, nearB*0.55);
       // atmosphere
       float f = smoothstep(uFogNear, uFogFar, vZ);
       f *= (1.0 - vState.x*0.85);
       c = mix(c, uFog, f*0.7);
       c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11))), f*0.5);
       // dim the world when something is featured; featured prints stay bright
-      float keep = clamp(vState.x, 0.0, 1.0);
       c *= mix(1.0 - 0.74*uDim, 1.12, keep);
       // highlight: a faint warm lift
       c += keep*vec3(0.06, 0.05, 0.03);
@@ -722,8 +725,24 @@ window.AC = window.AC || {};
     geo.setAttribute('aTone', new T.InstancedBufferAttribute(aTone, 2));
     const stateAttr = new T.InstancedBufferAttribute(aState, 3).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
     const mat = new T.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: {
-      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 20 }, uFogFar: { value: 72 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
+      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 30 }, uFogFar: { value: 98 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
+
+    // horizon: a planet limb far behind the string, with a thin warm rim of light
+    {
+      const H = AC.layout.HORIZON;
+      const limbVert = `varying vec3 vN, vV, vW; void main(){ vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix*vec4(position,1.0)).xyz; gl_Position = projectionMatrix*mv; }`;
+      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim };
+      const body = new T.Mesh(new T.SphereGeometry(H.radius, 96, 64), new T.ShaderMaterial({ uniforms: limbU, vertexShader: limbVert,
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = 1.0 - 0.75*uDim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
+      body.position.set(H.center.x, H.center.y, H.center.z); scene.add(body);
+      const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.04, 96, 64), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: limbU, vertexShader: limbVert,
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim); gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
+      glow.position.copy(body.position); scene.add(glow);
+      // two faint lines of flow following the string, as in the reference
+      const flowMat = new T.LineBasicMaterial({ color: 0xCFC5B4, transparent: true, opacity: 0.085 });
+      [[0.9, 0.6], [-1.3, -0.5]].forEach(([oy, oz], i) => { const pts = []; for (let k = 0; k <= 120; k++){ const t = 0.02 + 0.93*k/120; const s = AC.layout.spine(t); pts.push(new T.Vector3(s.x, s.y + oy*(1 + 1.8*t) + Math.sin(t*9 + i)*0.4*t, s.z + oz*(1 + 2*t))); } scene.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), flowMat)); });
+    }
 
     // connection arcs (shared intention)
     const arcMat = new T.LineBasicMaterial({ color: 0xC9BFAE, transparent: true, opacity: 0 });
@@ -755,7 +774,7 @@ window.AC = window.AC || {};
     // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
     const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
     function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
-    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x, c.pos.y + (narrow ? 1.6 : 0), c.pos.z + (narrow ? 13 : 0)), look: new T.Vector3(c.look.x, c.look.y + (narrow ? 1.6 : 0), c.look.z) }; }
+    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x - (narrow ? 4 : 0), c.pos.y + (narrow ? 2.5 : 0), c.pos.z + (narrow ? 20 : 0)), look: new T.Vector3(c.look.x - (narrow ? 6 : 0), c.look.y + (narrow ? 1.5 : 0), c.look.z) }; }
     const user = { az: 0, el: 0, dist: 0, azT: 0, elT: 0, distT: 0 };  // bounded personal exploration offsets
     let tween = null;             // { from:{pos,look}, to:{pos,look}, t0, dur }
     let saved = null;             // viewpoint saved before a focus
@@ -859,7 +878,8 @@ window.AC = window.AC || {};
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
         let aT = 1;
-        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.4 + BASE*h.scale*0.8; if (perp < rad){ aT = Math.min(aT, 0.08 + 0.3*(perp/rad)); } } } }
+        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.2 + BASE*(h.scale*0.6 + f.home.scale*1.1); if (perp < rad){ aT = Math.min(aT, 0.08 + 0.3*(perp/rad)); } } } }
+        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (dc < 18) aT = Math.min(aT, 0.1 + 0.9*Math.max(0, (dc - 10)/8)*0.3); }
         if (!r.c.eligible || r.pending) aT = 0;
         r.alphaT = aT; r.alpha += (r.alphaT - r.alpha)*(1 - Math.pow(0.03, dt));
         const sc = r.s*h.scale*(1 + r.hl*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
@@ -867,7 +887,7 @@ window.AC = window.AC || {};
         aState[i*3] = r.hl; aState[i*3 + 1] = 0; aState[i*3 + 2] = r.alpha;
       }
       mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
-      mat.uniforms.uFogFar.value = n > 600 ? 64 : 72; mat.uniforms.uFogNear.value = n > 600 ? 18 : 20;
+      mat.uniforms.uFogFar.value = n > 600 ? 90 : 98; mat.uniforms.uFogNear.value = n > 600 ? 26 : 30;
       arcMat.opacity += (arcTarget - arcMat.opacity)*(1 - Math.pow(0.05, dt)); if (arcMat.opacity < 0.01 && arcs.children.length && arcTarget === 0) disposeArcs();
       arcs.visible = arcMat.opacity > 0.01;
       if (ripple.visible){ rippleT += dt; const k = clamp(rippleT/2.2, 0, 1); ripple.scale.setScalar(0.6 + k*4.5); ripple.material.opacity = (1 - k)*0.5; ripple.quaternion.copy(camera.quaternion); if (k >= 1) ripple.visible = false; }

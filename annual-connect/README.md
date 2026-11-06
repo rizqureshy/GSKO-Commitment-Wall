@@ -54,11 +54,12 @@ available to assistive technology.
 
 ## Composition and the glide
 
-People are laid along one ribbon that starts large at lower left and thins into the distance at upper right,
-with themes occupying stretches of the ribbon. Home positions never move. In guided view the camera glides
-alongside the ribbon, one slow pass each way over three minutes, so the stream appears to flow past. A focus
-holds the camera; returning picks the glide up where it left off. Closing a manual selection returns to the
-exact still viewpoint the viewer had.
+A string of portraits rises out of a planet horizon on the far left, small and quiet, and flows toward the
+viewer on the right, where it opens into layers and the nearest prints are large and softly out of focus.
+Themes occupy stretches of the string. Home positions never move. In guided view the camera drifts slowly
+along the near reach of the string, one pass each way over three minutes, so the flow appears to move. A focus
+holds the camera; returning picks the drift up where it left off. Closing a manual selection returns to the
+exact still viewpoint the viewer had. The horizon is a lit sphere in the scene, so it shifts with the camera.
 
 ## Motion contract (defaults, for tuning)
 

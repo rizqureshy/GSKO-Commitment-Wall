@@ -19,26 +19,29 @@ window.AC = window.AC || {};
     precision highp float;
     uniform sampler2D uPhotos; uniform sampler2D uInitials; uniform float uPhotoOK; uniform float uDim; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFog; uniform float uTime;
     varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec3 vState; varying float vZ;
-    float dither(vec2 p){ return fract(52.9829189*fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+    vec3 samp(vec2 local, float usePhoto){ vec2 uv = vRect.xy + clamp(local, 0.0, 1.0)*vRect.zw; return mix(texture2D(uInitials, uv).rgb, texture2D(uPhotos, uv).rgb, usePhoto); }
     void main(){
       float alpha = vState.z;
       if (alpha < 0.03) discard;
-      vec2 uv = vRect.xy + vUv*vRect.zw;
       float usePhoto = (vAtlas < 0.5 && uPhotoOK > 0.5) ? 1.0 : 0.0;
-      vec3 c = mix(texture2D(uInitials, uv).rgb, texture2D(uPhotos, uv).rgb, usePhoto);
+      float keep = clamp(vState.x, 0.0, 1.0);
+      // the nearest prints fall out of focus, like the foreground of a photograph; a featured print never does
+      float nearB = smoothstep(17.0, 7.0, vZ)*(1.0 - keep);
+      vec3 c = samp(vUv, usePhoto);
+      if (nearB > 0.01){ vec2 o = vec2(0.028, 0.02)*nearB; c = (c*2.0 + samp(vUv + o, usePhoto) + samp(vUv - o, usePhoto) + samp(vUv + vec2(o.x, -o.y), usePhoto) + samp(vUv - vec2(o.x, -o.y), usePhoto))/6.0; }
       // per-print tonal variation so a repeated sample portrait reads as a different print
       c = (c - 0.5)*vTone.y + 0.5; c *= vTone.x;
       // soft inner vignette, like a print under glass
       vec2 e = abs(vUv - 0.5)*2.0; float vig = 1.0 - 0.22*pow(max(e.x, e.y), 4.0); c *= vig;
       // hairline edge
-      float edge = step(0.988, max(e.x, e.y)); c = mix(c, vec3(0.78, 0.75, 0.70), edge*0.35);
+      float edge = step(0.988, max(e.x, e.y)); c = mix(c, vec3(0.78, 0.75, 0.70), edge*0.35*(1.0 - nearB));
+      c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11)))*0.72 + 0.06, nearB*0.55);
       // atmosphere
       float f = smoothstep(uFogNear, uFogFar, vZ);
       f *= (1.0 - vState.x*0.85);
       c = mix(c, uFog, f*0.7);
       c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11))), f*0.5);
       // dim the world when something is featured; featured prints stay bright
-      float keep = clamp(vState.x, 0.0, 1.0);
       c *= mix(1.0 - 0.74*uDim, 1.12, keep);
       // highlight: a faint warm lift
       c += keep*vec3(0.06, 0.05, 0.03);
@@ -88,8 +91,24 @@ window.AC = window.AC || {};
     geo.setAttribute('aTone', new T.InstancedBufferAttribute(aTone, 2));
     const stateAttr = new T.InstancedBufferAttribute(aState, 3).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
     const mat = new T.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: {
-      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 20 }, uFogFar: { value: 72 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
+      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 30 }, uFogFar: { value: 98 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
+
+    // horizon: a planet limb far behind the string, with a thin warm rim of light
+    {
+      const H = AC.layout.HORIZON;
+      const limbVert = `varying vec3 vN, vV, vW; void main(){ vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix*vec4(position,1.0)).xyz; gl_Position = projectionMatrix*mv; }`;
+      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim };
+      const body = new T.Mesh(new T.SphereGeometry(H.radius, 96, 64), new T.ShaderMaterial({ uniforms: limbU, vertexShader: limbVert,
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = 1.0 - 0.75*uDim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
+      body.position.set(H.center.x, H.center.y, H.center.z); scene.add(body);
+      const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.04, 96, 64), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: limbU, vertexShader: limbVert,
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim); gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
+      glow.position.copy(body.position); scene.add(glow);
+      // two faint lines of flow following the string, as in the reference
+      const flowMat = new T.LineBasicMaterial({ color: 0xCFC5B4, transparent: true, opacity: 0.085 });
+      [[0.9, 0.6], [-1.3, -0.5]].forEach(([oy, oz], i) => { const pts = []; for (let k = 0; k <= 120; k++){ const t = 0.02 + 0.93*k/120; const s = AC.layout.spine(t); pts.push(new T.Vector3(s.x, s.y + oy*(1 + 1.8*t) + Math.sin(t*9 + i)*0.4*t, s.z + oz*(1 + 2*t))); } scene.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), flowMat)); });
+    }
 
     // connection arcs (shared intention)
     const arcMat = new T.LineBasicMaterial({ color: 0xC9BFAE, transparent: true, opacity: 0 });
@@ -121,7 +140,7 @@ window.AC = window.AC || {};
     // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
     const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
     function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
-    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x, c.pos.y + (narrow ? 1.6 : 0), c.pos.z + (narrow ? 13 : 0)), look: new T.Vector3(c.look.x, c.look.y + (narrow ? 1.6 : 0), c.look.z) }; }
+    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x - (narrow ? 4 : 0), c.pos.y + (narrow ? 2.5 : 0), c.pos.z + (narrow ? 20 : 0)), look: new T.Vector3(c.look.x - (narrow ? 6 : 0), c.look.y + (narrow ? 1.5 : 0), c.look.z) }; }
     const user = { az: 0, el: 0, dist: 0, azT: 0, elT: 0, distT: 0 };  // bounded personal exploration offsets
     let tween = null;             // { from:{pos,look}, to:{pos,look}, t0, dur }
     let saved = null;             // viewpoint saved before a focus
@@ -225,7 +244,8 @@ window.AC = window.AC || {};
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
         let aT = 1;
-        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.4 + BASE*h.scale*0.8; if (perp < rad){ aT = Math.min(aT, 0.08 + 0.3*(perp/rad)); } } } }
+        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.2 + BASE*(h.scale*0.6 + f.home.scale*1.1); if (perp < rad){ aT = Math.min(aT, 0.08 + 0.3*(perp/rad)); } } } }
+        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (dc < 18) aT = Math.min(aT, 0.1 + 0.9*Math.max(0, (dc - 10)/8)*0.3); }
         if (!r.c.eligible || r.pending) aT = 0;
         r.alphaT = aT; r.alpha += (r.alphaT - r.alpha)*(1 - Math.pow(0.03, dt));
         const sc = r.s*h.scale*(1 + r.hl*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
@@ -233,7 +253,7 @@ window.AC = window.AC || {};
         aState[i*3] = r.hl; aState[i*3 + 1] = 0; aState[i*3 + 2] = r.alpha;
       }
       mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
-      mat.uniforms.uFogFar.value = n > 600 ? 64 : 72; mat.uniforms.uFogNear.value = n > 600 ? 18 : 20;
+      mat.uniforms.uFogFar.value = n > 600 ? 90 : 98; mat.uniforms.uFogNear.value = n > 600 ? 26 : 30;
       arcMat.opacity += (arcTarget - arcMat.opacity)*(1 - Math.pow(0.05, dt)); if (arcMat.opacity < 0.01 && arcs.children.length && arcTarget === 0) disposeArcs();
       arcs.visible = arcMat.opacity > 0.01;
       if (ripple.visible){ rippleT += dt; const k = clamp(rippleT/2.2, 0, 1); ripple.scale.setScalar(0.6 + k*4.5); ripple.material.opacity = (1 - k)*0.5; ripple.quaternion.copy(camera.quaternion); if (k >= 1) ripple.visible = false; }
