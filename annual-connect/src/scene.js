@@ -139,11 +139,11 @@ window.AC = window.AC || {};
     // ---- camera model ----
     const cam = { pos: new T.Vector3(0, 1.6, 26), look: new T.Vector3(0, 1.6, 0) };
     // The stream: a position that advances around the loop. It eases to a stop while something is being read.
-    let streamPos = 0, streamSpeed = 1, streamSpeedT = 1; const PL = { x: 0, y: 0, z: 0, scale: 1, t: 0 };
+    let streamPos = 0, streamSpeed = 1, streamSpeedT = 1, scrubVel = 0; const PL = { x: 0, y: 0, z: 0, scale: 1, t: 0 };
     // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
     const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
     function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
-    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x - (narrow ? 4 : 0), c.pos.y + (narrow ? 2.5 : 0), c.pos.z + (narrow ? 20 : 0)), look: new T.Vector3(c.look.x - (narrow ? 6 : 0), c.look.y + (narrow ? 1.5 : 0), c.look.z) }; }
+    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x + (narrow ? 4 : 0), c.pos.y + (narrow ? 1.5 : 0), c.pos.z + (narrow ? 2 : 0)), look: new T.Vector3(c.look.x + (narrow ? 8 : 0), c.look.y + (narrow ? 1.0 : 0), c.look.z + (narrow ? 6 : 0)) }; }
     const user = { az: 0, el: 0, dist: 0, azT: 0, elT: 0, distT: 0 };  // bounded personal exploration offsets
     let tween = null;             // { from:{pos,look}, to:{pos,look}, t0, dur }
     let saved = null;             // viewpoint saved before a focus
@@ -239,7 +239,7 @@ window.AC = window.AC || {};
       // occlusion line
       let occA = null, occB = null; if (featuredIds.size && dim > 0.3){ occA = camera.position; }
       // stream advance
-      streamSpeed += (streamSpeedT - streamSpeed)*(1 - Math.pow(0.03, dt)); if (!quiet) streamPos = (streamPos + dt/AC.layout.STREAM_PERIOD*streamSpeed) % 1;
+      streamSpeed += (streamSpeedT - streamSpeed)*(1 - Math.pow(0.03, dt)); scrubVel *= Math.pow(0.08, dt); streamPos = ((streamPos + (quiet ? 0 : dt/AC.layout.STREAM_PERIOD*streamSpeed) + scrubVel*dt) % 1 + 1) % 1;
       // instances
       const n = items.length; const camPos = camera.position;
       for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
@@ -249,8 +249,8 @@ window.AC = window.AC || {};
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
         let aT = 1;
-        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.2 + BASE*(h.scale*0.6 + f.home.scale*1.1); if (perp < rad){ aT = Math.min(aT, 0.08 + 0.3*(perp/rad)); } } } }
-        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (dc < 18) aT = Math.min(aT, 0.1 + 0.9*Math.max(0, (dc - 10)/8)*0.3); }
+        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.4 + BASE*(h.scale*0.7 + f.home.scale*1.7); if (perp < rad){ aT = Math.min(aT, perp < rad*0.55 ? 0 : 0.08 + 0.3*(perp/rad)); } } } }
+        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (dc < 13) aT = 0; else if (dc < 20) aT = Math.min(aT, 0.1 + 0.3*(dc - 13)/7); }
         if (!r.c.eligible || r.pending) aT = 0;
         r.alphaT = aT; r.alpha += (r.alphaT - r.alpha)*(1 - Math.pow(0.03, dt));
         const sc = r.s*h.scale*(1 + r.hl*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
@@ -280,6 +280,8 @@ window.AC = window.AC || {};
       /* resumeGlide: return to the glide at the point where it was left (guided), else return to the exact still viewpoint (manual). */
       restoreViewpoint(dur, resumeGlide){ dimTo(0); if (!saved) return; if (saved.glide && resumeGlide){ const theta = Math.acos(clamp(1 - 2*saved.k, -1, 1)); phase = theta - OMEGA*performance.now()/1000; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 1800 : dur, true); } else { glideOn = false; flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } },
       stream(v){ streamSpeedT = v; },
+      /* Scrub the thread by hand: positive moves it forward (toward the viewer), negative back toward the horizon. */
+      scrub(d){ scrubVel = Math.max(-0.08, Math.min(0.08, scrubVel + d)); },
       get streamPos(){ return streamPos; },
       focus(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
       arrival(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.x, rec.y, rec.z - 0.05); ripple.visible = true; rippleT = 0; },

@@ -14,14 +14,19 @@ window.AC = window.AC || {};
   const STRETCH = {};
   ORDER.forEach((id, i) => { STRETCH[id] = [i/ORDER.length, (i + 1)/ORDER.length]; });
 
-  // Spine of the stream. t = 0 at the horizon (far left), t = 1 nearest the viewer (right, below the frame).
+  // Spine of the stream: a long horizontal run from the horizon across the frame, then a bend forward toward the
+  // viewer. A cubic curve in the ground plane; t = 0 at the horizon (far left), t = 1 just past the viewer.
+  const B = [[-64, -58], [4, -24], [10, 4], [20, 36]];
   function spine(t){
-    return { x: -60 + 78*t, y: -1 + 5*Math.sin(Math.PI*Math.min(1, t*1.1)), z: -56 + 74*t };
+    const u = 1 - t, a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
+    const x = a*B[0][0] + b*B[1][0] + c*B[2][0] + d*B[3][0];
+    const z = a*B[0][1] + b*B[1][1] + c*B[2][1] + d*B[3][1];
+    return { x, y: 0.2 + 2.2*t + 1.1*Math.sin(Math.PI*2*t), z };
   }
-  // Half-height of the sheet across the flow: a thread at the horizon, a wall near the viewer.
-  function halfHeight(t){ return 0.5 + 13.5*Math.pow(t, 1.0); }
-  // The crest: the sheet is biased upward through the middle so its upper edge climbs to the top of the frame.
-  function lift(t){ return 5*Math.sin(Math.PI*Math.min(1, t*0.95))*smooth(0.12, 0.42, t); }
+  // Half-height of the sheet across the flow: a thread at the horizon, a wall as it passes the viewer.
+  function halfHeight(t){ return 0.8 + 8.5*Math.pow(t, 1.2); }
+  // A gentle crest through the middle so the upper edge lifts a little, as in the reference.
+  function lift(t){ return 1.6*Math.sin(Math.PI*Math.min(1, t*0.95))*smooth(0.15, 0.45, t); }
 
   function homeFor(contribution){
     const rng = mulberry32(hashStr(contribution.id));
@@ -61,11 +66,11 @@ window.AC = window.AC || {};
 
   // Guided camera: a very gentle sway. The stream provides the motion; the camera only breathes.
   function cameraAt(k){
-    return { pos: { x: 4 + 2.5*k, y: 3.2 - 0.5*k, z: 38 - 2.5*k }, look: { x: -8 + 3*k, y: 2.2 - 0.4*k, z: -12 + 3*k } };
+    return { pos: { x: 2 + 2*k, y: 3.4 - 0.4*k, z: 38 - 2*k }, look: { x: -10 + 3*k, y: 1.6 - 0.3*k, z: -12 + 3*k } };
   }
 
   // Horizon: a planet limb far behind the stream, low and to the left. The stream rises from just above its edge.
-  const HORIZON = { center: { x: -112, y: -186, z: -150 }, radius: 176 };
+  const HORIZON = { center: { x: -118, y: -186, z: -150 }, radius: 176 };
 
   AC.layout = { homeFor, place, spine, cameraAt, ORDER, HORIZON, STREAM_PERIOD: 150 };
 })(window.AC);

@@ -47,7 +47,7 @@ window.AC = window.AC || {};
 
   // ---- sequencer ----
   const seq = AC.sequencer.createSequencer({
-    getPool: () => scene.items.filter(r => !r.pending).map(r => r.c),
+    getPool: () => { const front = scene.items.filter(r => !r.pending && r.alpha > 0.5 && r.home.t > 0.5 && r.home.t < 0.9); return (front.length >= 3 ? front : scene.items.filter(r => !r.pending)).map(r => r.c); },
     getRelated: (c, k) => related(c, k),
     random: AC.data.mulberry32(7),
     onEnter(kind, data, o){
@@ -128,7 +128,7 @@ window.AC = window.AC || {};
   });
   stage.addEventListener('pointerup', e => { if (!down) return; const wasDrag = dragged; down = null; if (wasDrag) return; if (e.target.closest('button, a, input, .panel, dialog')) return; const rec = scene.pick(e.clientX, e.clientY); if (rec) select(rec.c); });
   stage.addEventListener('pointercancel', () => down = null);
-  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); manualIntent(); scene.dollyBy(e.deltaY*0.01); }, { passive: false });
+  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') return; manualIntent(); scene.scrub((e.deltaY + e.deltaX)*0.00009); }, { passive: false });
   function manualIntent(){ if (!seq.state.startsWith('MANUAL')) seq.manual(); }
   const QUIET = ['GUIDED_OVERVIEW', 'MANUAL_EXPLORE', 'PAUSED'];
   function select(c){ const rec = scene.byId.get(c.id); if (!rec) return; if (QUIET.includes(seq.state)) scene.saveViewpoint(); seq.select(c); }
@@ -139,11 +139,11 @@ window.AC = window.AC || {};
   ui.resume.addEventListener('click', () => { scene.resetUser(); seq.resume(); });
   ui.guided.addEventListener('click', () => { scene.resetUser(); seq.resume(); });
   ui.pause.addEventListener('click', () => seq.pause());
-  ui.explore.addEventListener('click', () => { if (seq.state === 'MANUAL_FOCUS') seq.close(); else seq.manual(); note('Drag to look around, scroll to move closer, select a portrait to read.'); });
+  ui.explore.addEventListener('click', () => { if (seq.state === 'MANUAL_FOCUS') seq.close(); else seq.manual(); note('Scroll to move the stream, drag to look around, select a portrait to read.'); });
   ui.full.addEventListener('click', () => { const el = document.documentElement; const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) f.call(el).catch(() => note('Full screen is not available here.')); });
   ui.motion.addEventListener('click', () => { reduced = !reduced; ui.motion.setAttribute('aria-pressed', String(reduced)); ui.motion.textContent = reduced ? 'Motion off' : 'Motion on'; document.documentElement.classList.toggle('reduced', reduced); });
   if (reduced){ ui.motion.setAttribute('aria-pressed', 'true'); ui.motion.textContent = 'Motion off'; document.documentElement.classList.add('reduced'); }
-  document.addEventListener('keydown', e => { if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
+  document.addEventListener('keydown', e => { if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input') && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ manualIntent(); scene.scrub(e.key === 'ArrowRight' ? 0.012 : -0.012); } if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
 
   // ---- search ----
   function openSearch(){ ui.search.hidden = false; ui.sInput.value = ''; renderResults(''); ui.sInput.focus(); }

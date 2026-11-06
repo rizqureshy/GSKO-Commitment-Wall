@@ -62,6 +62,11 @@ positions and theme neighbourhoods are preserved as they travel. While a promise
 arrival is on screen the stream eases to a stop so the text and portrait stay still, then resumes. Pause stops
 it; reduced motion stops it. Closing a manual selection returns to the viewpoint the viewer had.
 
+The thread is also yours to move: the mouse wheel, a trackpad, or the left and right arrow keys scrub the
+stream forward and back with a little inertia. Doing so is a manual action and pauses the guided sequence.
+Automatic features are drawn only from the front of the stream, where people are large enough to read, and
+since everyone passes the front in turn, the rotation stays fair over time.
+
 ## Motion contract (defaults, for tuning)
 
 Overview gap 10–15 s · focus transition 2 s · reading time `max(12, 5 + words/2.5)` s · return 1.8 s ·
