@@ -1,67 +1,71 @@
-/* Annual Connect — deterministic layout.
-   Every contribution gets a home position derived only from its id and theme, so the world is stable across
-   revisits, resizes, selections and new arrivals.
-
-   Composition follows the reference: a string of portraits rises out of the horizon on the far left, small and
-   quiet, and flows toward the viewer on the right, where it widens into layers and the nearest prints are large.
-   Themes occupy stretches along the string, so neighbourhoods survive as reaches of the same flow. */
+/* Annual Connect — layout and stream.
+   Every contribution gets a deterministic place in the stream from its id and theme: a phase along the flow and an
+   offset across it. The stream itself moves: prints rise out of the horizon on the far left, swell into a wave that
+   crests near the top of the frame and fills the right of the picture, pass the viewer at lower right, and re-enter
+   at the horizon. Relative positions are preserved as they travel, so neighbourhoods travel together. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
   const { hashStr, mulberry32 } = AC.data;
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
 
-  // Theme order along the string, from the horizon (far) to the viewer (near).
+  // Theme order along the stream (phase bands), so a theme travels as one reach of the flow.
   const ORDER = ['listening', 'learning', 'execution', 'colleagues', 'customers', 'collaboration'];
   const STRETCH = {};
   ORDER.forEach((id, i) => { STRETCH[id] = [i/ORDER.length, (i + 1)/ORDER.length]; });
 
-  // The string's spine. t = 0 at the horizon (far left), t = 1 nearest the viewer (lower right).
+  // Spine of the stream. t = 0 at the horizon (far left), t = 1 nearest the viewer (right, below the frame).
   function spine(t){
-    const x = -58 + 72*t;
-    const z = -56 + 72*t;
-    const y = 1.4*(1 - t) + 3.4*Math.sin(t*Math.PI*1.7 - 0.4)*Math.pow(t, 0.4) - 2.6*t*t;
-    return { x, y, z };
+    return { x: -60 + 78*t, y: -1 + 5*Math.sin(Math.PI*Math.min(1, t*1.1)), z: -56 + 74*t };
   }
+  // Half-height of the sheet across the flow: a thread at the horizon, a wall near the viewer.
+  function halfHeight(t){ return 0.5 + 13.5*Math.pow(t, 1.0); }
+  // The crest: the sheet is biased upward through the middle so its upper edge climbs to the top of the frame.
+  function lift(t){ return 5*Math.sin(Math.PI*Math.min(1, t*0.95))*smooth(0.12, 0.42, t); }
 
   function homeFor(contribution){
     const rng = mulberry32(hashStr(contribution.id));
     const theme = contribution.themeIds[0];
     const st = STRETCH[theme] || [0, 1];
-    let t = st[0] + (st[1] - st[0])*rng() + (rng() - 0.5)*0.12;
-    t = Math.min(1, Math.max(0, t));
-    const s = spine(t);
-    const halo = rng() < 0.08;                                  // a few quiet prints drifting off the string
+    const phase = (st[0] + (st[1] - st[0])*rng() + (rng() - 0.5)*0.1 + 1) % 1;
     const hasPhoto = !!contribution.portrait;
-    const fore = !halo && hasPhoto && t > 0.78 && rng() < 0.22;  // the nearest layer, soft and large
-    // The string is thin at the horizon and opens into layers near the viewer.
-    const width = 1.0 + 7.5*Math.pow(t, 1.6);
-    const u = (rng() + rng() - 1);                              // triangular: denser along the centre line
-    const v = (rng() - 0.5);
-    let x = s.x + (rng() - 0.5)*(1 + 3*t);
-    const upper = !halo && t > 0.5 && rng() < 0.33;           // a second strand rising to the upper right
-    let y = s.y + u*width*(halo ? 2.6 : 1) + (upper ? 3.2 + 2.5*rng() : 0);
-    let z = s.z + v*(1.5 + 5*t) - (halo ? 10*rng() : 0);
-    if (fore){ z += 6 + 7*rng(); y -= 2.2; x += 1 + 3*rng(); }
-    if (halo){ y = Math.max(-7, Math.min(6.5, y)); }
-    // Scale: tiny at the horizon, large near the viewer. A few deterministic heroes.
+    const halo = rng() < 0.06;
+    const fore = !halo && hasPhoto && rng() < 0.16;              // nearest layer when it passes the viewer
+    // Offset across the sheet: mostly toward the centre line, some to the edges, so the mass has no hard border.
+    const u = rng() < 0.6 ? (rng() + rng() - 1) : (rng()*2 - 1);
+    const v = rng() - 0.5;                                        // depth jitter through the sheet
+    const xj = (rng() - 0.5);
     const hero = rng();
-    const base = (0.55 + 1.25*Math.pow(t, 2.2))*(fore ? 1.35 : 1)*(halo ? 0.7 : 1);
-    const scale = !hasPhoto ? base*(0.8 + rng()*0.25) : hero > 0.975 ? base*1.9 : hero > 0.9 ? base*1.4 : base*(0.85 + rng()*0.3);
+    const sizeK = !hasPhoto ? 0.8 + rng()*0.25 : hero > 0.975 ? 1.9 : hero > 0.9 ? 1.4 : 0.85 + rng()*0.3;
     const aspect = rng() > 0.5 ? 0.8 : 0.667;
     const drift = { ax: 0.12 + rng()*0.1, ay: 0.08 + rng()*0.08, px: rng()*Math.PI*2, py: rng()*Math.PI*2, sx: 0.06 + rng()*0.04, sy: 0.05 + rng()*0.04 };
-    return { x, y, z, t, scale, aspect, drift, halo, fore };
+    const home = { phase, u, v, xj, halo, fore, sizeK, aspect, drift, scale: 1, t: phase, x: 0, y: 0, z: 0 };
+    place(home, phase, home);
+    return home;
   }
 
-  // Camera path for the guided overview: a slow drift along the near reach of the string, looking back toward the
-  // horizon. k in [0,1]. The horizon stays in frame at the left throughout.
+  /* Position and scale of a print at stream position t (0..1). Writes x, y, z, scale, t into out. */
+  function place(home, t, out){
+    const s = spine(t);
+    const hh = halfHeight(t)*(home.halo ? 2.2 : 1);
+    let x = s.x + home.xj*(1 + 4*t);
+    let y = s.y + lift(t)*(0.5 + 0.5*home.u) + home.u*hh;
+    let z = s.z + home.v*(2 + 7*t) - (home.halo ? 8 : 0);
+    if (home.fore && t > 0.72){ const k = smooth(0.72, 0.9, t); z += 10*k; y -= 2.5*k; }
+    // Scale grows toward the viewer; prints fade in at the horizon and out past the viewer so the loop is seamless.
+    const base = (0.6 + 1.6*Math.pow(t, 1.9))*(home.fore ? 1.25 : 1)*(home.halo ? 0.7 : 1);
+    const loop = smooth(0, 0.035, t)*(1 - smooth(0.96, 1, t));
+    out.x = x; out.y = y; out.z = z; out.scale = base*home.sizeK*Math.max(0.001, loop); out.t = t;
+    return out;
+  }
+
+  // Guided camera: a very gentle sway. The stream provides the motion; the camera only breathes.
   function cameraAt(k){
-    const pos = { x: 6 + 6*k, y: 2.6 - 0.8*k, z: 38 - 6*k };
-    const look = { x: -7 + 8*k, y: 0.8 - 0.6*k, z: -12 + 8*k };
-    return { pos, look };
+    return { pos: { x: 4 + 2.5*k, y: 3.2 - 0.5*k, z: 38 - 2.5*k }, look: { x: -8 + 3*k, y: 2.2 - 0.4*k, z: -12 + 3*k } };
   }
 
-  // Horizon: a planet limb far behind the string, low and to the left.
-  const HORIZON = { center: { x: -108, y: -186, z: -150 }, radius: 176 };
+  // Horizon: a planet limb far behind the stream, low and to the left. The stream rises from just above its edge.
+  const HORIZON = { center: { x: -112, y: -186, z: -150 }, radius: 176 };
 
-  AC.layout = { homeFor, spine, cameraAt, ORDER, HORIZON };
+  AC.layout = { homeFor, place, spine, cameraAt, ORDER, HORIZON, STREAM_PERIOD: 150 };
 })(window.AC);

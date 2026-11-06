@@ -124,6 +124,7 @@ window.AC = window.AC || {};
       if (items.length >= MAXN) return null;
       const home = AC.layout.homeFor(c);
       const i = items.length;
+      if (animateIn) home.phase = (0.6 - streamPos + 1) % 1;   // a newcomer enters where the stream is readable
       const rec = { c, home, i, x: home.x, y: home.y, z: home.z, s: animateIn ? 0.001 : 1, hl: 0, hlT: 0, alpha: 1, alphaT: 1, zoff: animateIn ? 7 : 0, bornAt: performance.now(), animateIn: !!animateIn, hover: 0 };
       items.push(rec); byId.set(c.id, rec);
       const rng = AC.data.mulberry32(AC.data.hashStr(c.id + ':tone'));
@@ -137,6 +138,8 @@ window.AC = window.AC || {};
 
     // ---- camera model ----
     const cam = { pos: new T.Vector3(0, 1.6, 26), look: new T.Vector3(0, 1.6, 0) };
+    // The stream: a position that advances around the loop. It eases to a stop while something is being read.
+    let streamPos = 0, streamSpeed = 1, streamSpeedT = 1; const PL = { x: 0, y: 0, z: 0, scale: 1, t: 0 };
     // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
     const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
     function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
@@ -235,11 +238,13 @@ window.AC = window.AC || {};
       dim += (dimTarget - dim)*(1 - Math.pow(0.02, dt)); mat.uniforms.uDim.value = dim; mat.uniforms.uTime.value = t;
       // occlusion line
       let occA = null, occB = null; if (featuredIds.size && dim > 0.3){ occA = camera.position; }
+      // stream advance
+      streamSpeed += (streamSpeedT - streamSpeed)*(1 - Math.pow(0.03, dt)); if (!quiet) streamPos = (streamPos + dt/AC.layout.STREAM_PERIOD*streamSpeed) % 1;
       // instances
       const n = items.length; const camPos = camera.position;
       for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
         const dx = quiet ? 0 : Math.sin(t*h.drift.ax + h.drift.px)*h.drift.sx, dy = quiet ? 0 : Math.sin(t*h.drift.ay + h.drift.py)*h.drift.sy;
-        r.x = h.x + dx; r.y = h.y + dy; r.z = h.z;
+        AC.layout.place(h, (h.phase + streamPos) % 1, PL); h.scale = PL.scale; h.t = PL.t; r.x = PL.x + dx; r.y = PL.y + dy; r.z = PL.z;
         if (r.animateIn){ const k = clamp((now - r.bornAt)/2600, 0, 1); const e = easeOut(k); r.s = 0.001 + e*0.999; r.zoff = 7*(1 - e); if (k >= 1) r.animateIn = false; }
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
@@ -274,11 +279,13 @@ window.AC = window.AC || {};
       saveViewpoint(){ saved = Object.assign(viewpoint(), { k: kNow(performance.now()), glide: glideOn }); user.azT = user.az; user.elT = user.el; user.distT = user.dist; },
       /* resumeGlide: return to the glide at the point where it was left (guided), else return to the exact still viewpoint (manual). */
       restoreViewpoint(dur, resumeGlide){ dimTo(0); if (!saved) return; if (saved.glide && resumeGlide){ const theta = Math.acos(clamp(1 - 2*saved.k, -1, 1)); phase = theta - OMEGA*performance.now()/1000; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 1800 : dur, true); } else { glideOn = false; flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } },
-      focus(rec, dur){ holdCamera(); setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
-      arrival(rec, dur){ holdCamera(); setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.home.x, rec.home.y, rec.home.z - 0.05); ripple.visible = true; rippleT = 0; },
-      group(recs, dur){ holdCamera(); setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
+      stream(v){ streamSpeedT = v; },
+      get streamPos(){ return streamPos; },
+      focus(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
+      arrival(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.x, rec.y, rec.z - 0.05); ripple.visible = true; rippleT = 0; },
+      group(recs, dur){ holdCamera(); streamSpeedT = 0; setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
       pulse(ids){ ids.forEach(id => { const r = byId.get(id); if (r){ r.hl = 0.5; } }); },
-      release(){ clearFeatured(); clearArcs(); dimTo(0); },
+      release(){ clearFeatured(); clearArcs(); dimTo(0); streamSpeedT = 1; },
       pick, project,
       setHover(rec){ if (hoverRec && hoverRec !== rec) hoverRec.hover = 0; hoverRec = rec; if (rec) rec.hover = 1; },
       orbitBy(dAz, dEl){ user.azT = clamp(user.azT + dAz, -0.55, 0.55); user.elT = clamp(user.elT + dEl, -0.22, 0.3); },
