@@ -24,7 +24,8 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:1px solid var(-
 p{margin:0}
 
 #stage{position:fixed;inset:0;background:
-  radial-gradient(90% 60% at 18% 22%, rgba(120,110,96,.16) 0%, rgba(120,110,96,0) 60%),
+  radial-gradient(70% 16% at 42% 30%, rgba(214,196,168,.13) 0%, rgba(214,196,168,0) 70%),
+  radial-gradient(90% 60% at 18% 22%, rgba(120,110,96,.14) 0%, rgba(120,110,96,0) 60%),
   radial-gradient(70% 50% at 85% 90%, rgba(60,56,52,.35) 0%, rgba(60,56,52,0) 60%),
   var(--bg);touch-action:none}
 #stage.hover{cursor:pointer}
@@ -76,6 +77,8 @@ nav.bottom button[aria-pressed="true"]{text-decoration:underline;text-underline-
 .panel{position:absolute;z-index:6}
 #focus{right:max(28px,env(safe-area-inset-right,0px));top:50%;transform:translateY(-50%) translateX(14px);width:min(44vw,640px);max-height:80vh;overflow:auto;display:flex;flex-direction:column;gap:clamp(14px,1.8vw,24px);opacity:0;transition:opacity 1.1s ease .3s,transform 1.1s ease .3s;padding-right:4px}
 #focus.on{opacity:1;transform:translateY(-50%)}
+#focus::before{content:"";position:absolute;inset:-18% -30% -18% -22%;z-index:-1;background:radial-gradient(ellipse 100% 100% at 50% 50%, rgba(10,10,11,.86) 0%, rgba(10,10,11,.5) 45%, rgba(10,10,11,0) 72%);pointer-events:none}
+#focus{position:absolute;isolation:isolate}
 .reduced #focus{transition:opacity .4s}
 #focus .kicker{font-size:12px;letter-spacing:.3em;text-transform:uppercase;color:var(--silver);display:flex;gap:12px;align-items:center}
 #focus .kicker::before{content:"";width:18px;height:1px;background:var(--crimson)}
@@ -433,55 +436,69 @@ window.AC = window.AC || {};
 
 /* Annual Connect — deterministic layout.
    Every contribution gets a home position derived only from its id and theme, so the world is stable across
-   revisits, resizes, selections and new arrivals. Themes form loose neighbourhoods along a broad, asymmetric
-   current that sweeps from lower-left foreground to upper-right distance, like the reference. */
+   revisits, resizes, selections and new arrivals.
+
+   Composition follows the reference: one broad ribbon of portraits that starts large at lower left, sweeps up
+   and away to the upper right and thins into the distance. Themes occupy stretches along the ribbon, so
+   neighbourhoods survive as reaches of the same stream. A sparse halo of small distant prints sits off the band. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
   const { hashStr, mulberry32 } = AC.data;
 
-  // Theme anchors in world units (x right, y up, z toward camera). The camera sits around z = +22 looking at the origin.
-  const ANCHORS = {
-    collaboration: { x: -9,  y:  1.5, z:  2 },
-    customers:     { x:  4,  y:  3.5, z: -2 },
-    learning:      { x: 13,  y:  6.5, z: -9 },
-    execution:     { x: -3,  y: -1.5, z: -6 },
-    colleagues:    { x: 9,   y:  0.5, z:  5 },
-    listening:     { x: -13, y:  0.5, z: -11 }
-  };
+  // Theme order along the ribbon (near end first) and the stretch each occupies, as a range of t in [0,1].
+  const ORDER = ['collaboration', 'customers', 'colleagues', 'execution', 'learning', 'listening'];
+  const STRETCH = {};
+  ORDER.forEach((id, i) => { STRETCH[id] = [i/ORDER.length, (i + 1)/ORDER.length]; });
 
-  // Current: a gentle S-curve through the space. t in [0,1] maps to a point on it.
-  function current(t){
-    const x = -24 + 48*t;
-    const y = -2 + 7*t + 2.2*Math.sin(t*Math.PI*1.6);
-    const z = 4 - 18*t + 3*Math.sin(t*Math.PI*2.3);
+  // The ribbon's spine. t = 0 is the near end (lower left, close to camera), t = 1 the far end (upper right, deep).
+  function spine(t){
+    const x = -20 + 54*t;
+    const y = -4 + 10*t + 1.8*Math.sin(t*Math.PI*1.25);
+    const z = 8 - 36*t;
     return { x, y, z };
   }
+  // Local frame of the spine at t: tangent, and a "normal" that keeps the band facing the camera.
+  function tangent(t){ const a = spine(Math.max(0, t - 0.01)), b = spine(Math.min(1, t + 0.01)); const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z; const l = Math.hypot(dx, dy, dz) || 1; return { x: dx/l, y: dy/l, z: dz/l }; }
 
   function homeFor(contribution){
-    const seed = hashStr(contribution.id);
-    const rng = mulberry32(seed);
+    const rng = mulberry32(hashStr(contribution.id));
     const theme = contribution.themeIds[0];
-    const a = ANCHORS[theme] || { x: 0, y: 0, z: 0 };
-    // Position = blend of the global current and the theme anchor, plus a scattered offset.
-    const t = Math.min(1, Math.max(0, (a.x + 24)/48 + (rng() - 0.5)*0.42));
-    const c = current(t);
-    const w = 0.45; // how strongly the theme pulls
-    const r1 = rng(), r2 = rng(), r3 = rng();
-    const spread = 1 + 1.6*Math.pow(rng(), 0.5);
-    const x = c.x*(1 - w) + a.x*w + (r1 - 0.5)*7.5*spread;
-    const y = c.y*(1 - w) + a.y*w + (r2 - 0.5)*5.2*spread;
-    const z = c.z*(1 - w) + a.z*w + (r3 - 0.5)*9*spread;
-    // Portrait scale: a few are larger (foreground heroes), most are modest. Deterministic.
-    const big = rng();
-    const scale = big > 0.965 ? 1.9 : big > 0.86 ? 1.35 : 0.8 + rng()*0.4;
-    // Aspect: portraits are 2:3 or 4:5 rectangles.
+    const st = STRETCH[theme] || [0, 1];
+    // Position along the ribbon: inside the theme's stretch, with soft overlap into neighbours.
+    let t = st[0] + (st[1] - st[0])*rng() + (rng() - 0.5)*0.12;
+    t = Math.min(1, Math.max(0, t));
+    const halo = rng() < 0.1;                           // a few quiet prints off the band
+    const s = spine(t), tg = tangent(t);
+    // Band half-width grows toward the near end; perpendicular scatter is tight, along-band scatter is loose.
+    const width = (2.2 + 3.2*(1 - t)) * (halo ? 2.8 : 1);
+    const u = (rng() + rng() - 1);                      // triangular, denser at the centre line
+    const v = (rng() - 0.5)*1.4;                        // depth jitter through the band
+    // Perpendicular directions: screen-up-ish and the camera axis.
+    const px = -tg.z, pz = tg.x;                        // horizontal perpendicular to the tangent (in the xz plane)
+    const x = s.x + u*width*0.55*px + v*1.6*tg.x*0 + (rng() - 0.5)*1.2;
+    const y = s.y + u*width*1.0 + (rng() - 0.5)*0.8;
+    const z = s.z + u*width*0.25*pz + v*2.4 + (halo ? -6*rng() : 0);
+    // Scale: large at the near end, modest in the middle, small and quiet far away. A few deterministic heroes.
+    const near = 1 - t;
+    const hero = rng();
+    const base = 0.62 + 0.9*near*near;
+    const scale = halo ? base*0.6 : hero > 0.975 ? base*2.0 : hero > 0.9 ? base*1.45 : base*(0.85 + rng()*0.3);
     const aspect = rng() > 0.5 ? 0.8 : 0.667;
     const drift = { ax: 0.12 + rng()*0.1, ay: 0.08 + rng()*0.08, px: rng()*Math.PI*2, py: rng()*Math.PI*2, sx: 0.06 + rng()*0.04, sy: 0.05 + rng()*0.04 };
-    return { x, y, z, scale, aspect, drift };
+    return { x, y, z, t, scale, aspect, drift, halo };
   }
 
-  AC.layout = { homeFor, ANCHORS };
+  // Camera path for the guided overview: a slow glide alongside the ribbon. k in [0,1] from near end to far end.
+  function cameraAt(k){
+    const t = 0.08 + 0.62*k;                            // never run past the far tail
+    const s = spine(t);
+    const look = { x: s.x + 6.5, y: s.y + 2.6, z: s.z };
+    const pos = { x: s.x - 2 + 4*k, y: s.y + 2.6 + 1.4*k, z: s.z + 24 - 3*k };
+    return { pos, look };
+  }
+
+  AC.layout = { homeFor, spine, cameraAt, ORDER };
 })(window.AC);
 
 /* Annual Connect — presentation state machine and guided sequencer.
@@ -597,7 +614,7 @@ window.AC = window.AC || {};
         if (current) onExit(current.kind);
         go('MANUAL_EXPLORE', null);
       },
-      resume(){ clear(); featured = featured.slice(-Math.floor(getPool().length*0.5)); scheduleOverview(1200); },
+      resume(){ clear(); featured = featured.slice(-Math.floor(getPool().length*0.5)); scheduleOverview(TIMING.breathe); },
       pause(){ clear(); if (current) onExit(current.kind, { silent: true }); go('PAUSED', null); },
       enqueueArrival(id){ arrivals.push(id); emit(); if (state === 'GUIDED_OVERVIEW'){ clear(); later(1200, nextStep); } },
       /* Manual theme exploration: show the group but under manual control. */
@@ -646,11 +663,11 @@ window.AC = window.AC || {};
       // atmosphere
       float f = smoothstep(uFogNear, uFogFar, vZ);
       f *= (1.0 - vState.x*0.85);
-      c = mix(c, uFog, f*0.82);
+      c = mix(c, uFog, f*0.7);
       c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11))), f*0.5);
       // dim the world when something is featured; featured prints stay bright
       float keep = clamp(vState.x, 0.0, 1.0);
-      c *= mix(1.0 - 0.62*uDim, 1.12, keep);
+      c *= mix(1.0 - 0.74*uDim, 1.12, keep);
       // highlight: a faint warm lift
       c += keep*vec3(0.06, 0.05, 0.03);
       c *= mix(0.3, 1.0, alpha);
@@ -699,7 +716,7 @@ window.AC = window.AC || {};
     geo.setAttribute('aTone', new T.InstancedBufferAttribute(aTone, 2));
     const stateAttr = new T.InstancedBufferAttribute(aState, 3).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
     const mat = new T.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: {
-      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 18 }, uFogFar: { value: 46 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
+      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 20 }, uFogFar: { value: 72 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
 
     // connection arcs (shared intention)
@@ -729,15 +746,20 @@ window.AC = window.AC || {};
 
     // ---- camera model ----
     const cam = { pos: new T.Vector3(0, 1.6, 26), look: new T.Vector3(0, 1.6, 0) };
-    const home = { pos: cam.pos.clone(), look: cam.look.clone() };
+    // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
+    const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
+    function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
+    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x, c.pos.y + (narrow ? 1.6 : 0), c.pos.z + (narrow ? 13 : 0)), look: new T.Vector3(c.look.x, c.look.y + (narrow ? 1.6 : 0), c.look.z) }; }
     const user = { az: 0, el: 0, dist: 0, azT: 0, elT: 0, distT: 0 };  // bounded personal exploration offsets
     let tween = null;             // { from:{pos,look}, to:{pos,look}, t0, dur }
     let saved = null;             // viewpoint saved before a focus
     const tmpV = new T.Vector3(), tmpR = new T.Vector3(), tmpU = new T.Vector3(), tmpF = new T.Vector3();
-    function flyTo(pos, look, dur){
+    function flyTo(pos, look, dur, dynamic){
       if (rm()) dur = Math.min(dur, 300);
-      tween = { from: { pos: cam.pos.clone(), look: cam.look.clone() }, to: { pos: pos.clone(), look: look.clone() }, t0: performance.now(), dur };
+      tween = { from: { pos: cam.pos.clone(), look: cam.look.clone() }, to: { pos: pos.clone(), look: look.clone() }, t0: performance.now(), dur, dynamic: !!dynamic };
     }
+    function startGlide(dur){ if (glideOn && !tween) return; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 2400 : dur, true); }
+    function holdCamera(){ glideOn = false; if (tween && tween.dynamic) tween.dynamic = false; }
     function viewpoint(){ return { pos: (tween ? tween.to.pos : cam.pos).clone(), look: (tween ? tween.to.look : cam.look).clone() }; }
     function dimTo(v){ dimTarget = v; }
     let dimTarget = 0, dim = 0;
@@ -802,15 +824,17 @@ window.AC = window.AC || {};
 
     // ---- resize ----
     function resize(){ const r = stage.getBoundingClientRect(); const dpr = Math.min(2, window.devicePixelRatio || 1); renderer.setPixelRatio(dpr); renderer.setSize(Math.max(2, r.width), Math.max(2, r.height), false); camera.aspect = r.width/Math.max(1, r.height); camera.updateProjectionMatrix();
-      const narrow = camera.aspect < 0.9; home.pos.set(0, 1.6, narrow ? 40 : 26); home.look.set(0, narrow ? 3.2 : 1.6, 0); }
+    }
     resize(); new ResizeObserver(resize).observe(stage);
+    { const g = glidePose(performance.now()); cam.pos.copy(g.pos); cam.look.copy(g.look); }
 
     // ---- frame loop ----
     let last = performance.now(); let hoverRec = null; let rippleT = 99;
     function tick(now){
       const dt = Math.min(0.05, (now - last)/1000); last = now; const t = now/1000;
       // camera
-      if (tween){ const k = clamp((now - tween.t0)/tween.dur, 0, 1); const e = easeInOut(k); cam.pos.lerpVectors(tween.from.pos, tween.to.pos, e); cam.look.lerpVectors(tween.from.look, tween.to.look, e); if (k >= 1) tween = null; }
+      if (tween){ if (tween.dynamic){ const g = glidePose(now); tween.to.pos.copy(g.pos); tween.to.look.copy(g.look); } const k = clamp((now - tween.t0)/tween.dur, 0, 1); const e = easeInOut(k); cam.pos.lerpVectors(tween.from.pos, tween.to.pos, e); cam.look.lerpVectors(tween.from.look, tween.to.look, e); if (k >= 1) tween = null; }
+      else if (glideOn){ const g = glidePose(now); cam.pos.copy(g.pos); cam.look.copy(g.look); }
       // user offsets (bounded orbit) with damping
       user.az += (user.azT - user.az)*(1 - Math.pow(0.001, dt)); user.el += (user.elT - user.el)*(1 - Math.pow(0.001, dt)); user.dist += (user.distT - user.dist)*(1 - Math.pow(0.001, dt));
       const quiet = rm(); const driftAz = quiet ? 0 : Math.sin(t*0.07)*0.045, driftEl = quiet ? 0 : Math.sin(t*0.05 + 1)*0.02;
@@ -837,7 +861,7 @@ window.AC = window.AC || {};
         aState[i*3] = r.hl; aState[i*3 + 1] = 0; aState[i*3 + 2] = r.alpha;
       }
       mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
-      mat.uniforms.uFogFar.value = n > 600 ? 40 : 46; mat.uniforms.uFogNear.value = n > 600 ? 15 : 18;
+      mat.uniforms.uFogFar.value = n > 600 ? 64 : 72; mat.uniforms.uFogNear.value = n > 600 ? 18 : 20;
       arcMat.opacity += (arcTarget - arcMat.opacity)*(1 - Math.pow(0.05, dt)); if (arcMat.opacity < 0.01 && arcs.children.length && arcTarget === 0) disposeArcs();
       arcs.visible = arcMat.opacity > 0.01;
       if (ripple.visible){ rippleT += dt; const k = clamp(rippleT/2.2, 0, 1); ripple.scale.setScalar(0.6 + k*4.5); ripple.material.opacity = (1 - k)*0.5; ripple.quaternion.copy(camera.quaternion); if (k >= 1) ripple.visible = false; }
@@ -852,12 +876,15 @@ window.AC = window.AC || {};
       get count(){ return items.length; },
       loadPhotos(url){ return new Promise(res => { const img = new Image(); img.onload = () => { photoTex.image = img; photoTex.needsUpdate = true; mat.uniforms.uPhotoOK.value = 1; photoOK = 1; res(true); }; img.onerror = () => { mat.uniforms.uPhotoOK.value = 0; res(false); }; img.src = url; }); },
       get photosReady(){ return photoOK === 1; },
-      goHome(dur){ flyTo(home.pos, home.look, dur == null ? 1800 : dur); dimTo(0); },
-      saveViewpoint(){ saved = viewpoint(); user.azT = user.az; user.elT = user.el; user.distT = user.dist; },
-      restoreViewpoint(dur){ if (saved){ flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } dimTo(0); },
-      focus(rec, dur){ setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
-      arrival(rec, dur){ setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.home.x, rec.home.y, rec.home.z - 0.05); ripple.visible = true; rippleT = 0; },
-      group(recs, dur){ setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
+      glide(dur){ startGlide(dur); dimTo(0); },
+      hold(){ holdCamera(); },
+      get gliding(){ return glideOn; },
+      saveViewpoint(){ saved = Object.assign(viewpoint(), { k: kNow(performance.now()), glide: glideOn }); user.azT = user.az; user.elT = user.el; user.distT = user.dist; },
+      /* resumeGlide: return to the glide at the point where it was left (guided), else return to the exact still viewpoint (manual). */
+      restoreViewpoint(dur, resumeGlide){ dimTo(0); if (!saved) return; if (saved.glide && resumeGlide){ const theta = Math.acos(clamp(1 - 2*saved.k, -1, 1)); phase = theta - OMEGA*performance.now()/1000; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 1800 : dur, true); } else { glideOn = false; flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } },
+      focus(rec, dur){ holdCamera(); setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
+      arrival(rec, dur){ holdCamera(); setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.home.x, rec.home.y, rec.home.z - 0.05); ripple.visible = true; rippleT = 0; },
+      group(recs, dur){ holdCamera(); setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
       pulse(ids){ ids.forEach(id => { const r = byId.get(id); if (r){ r.hl = 0.5; } }); },
       release(){ clearFeatured(); clearArcs(); dimTo(0); },
       pick, project,
@@ -927,15 +954,15 @@ window.AC = window.AC || {};
     random: AC.data.mulberry32(7),
     onEnter(kind, data, o){
       ui.title.classList.add('away');
-      if (kind === 'overview'){ ui.title.classList.remove('away'); return; }
+      if (kind === 'overview'){ ui.title.classList.remove('away'); scene.glide(); return; }
       hideTheme(); scene.release();
       if (kind === 'focus'){ const rec = scene.byId.get(data.id); if (!rec) return; if (!o || !o.manual) scene.saveViewpoint(); scene.focus(rec); showFocus(data, 'One promise'); }
       if (kind === 'theme'){ hideFocus(); const recs = [data.lead].concat(data.related).map(c => scene.byId.get(c.id)).filter(Boolean); if (!o || !o.manual) scene.saveViewpoint(); scene.group(recs); showTheme(data, recs); }
       if (kind === 'arrival'){ const recs = data.ids.map(id => scene.byId.get(id)).filter(Boolean); if (!recs.length) return; scene.saveViewpoint(); recs.forEach(introduce); scene.arrival(recs[0]); showArrival(recs, data.remaining); const rel = related(recs[0].c, 6).map(c => c.id); setTimeout(() => scene.pulse(rel), 900); }
     },
-    onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(); }
+    onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(undefined, seq.state.startsWith('GUIDED')); }
   });
-  seq.onChange(s => { renderStatus(s); });
+  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); });
 
   function renderStatus(s){
     const st = s.state; const guided = st.startsWith('GUIDED'); const manual = st.startsWith('MANUAL');
@@ -973,12 +1000,14 @@ window.AC = window.AC || {};
 
   // ---- labels (overview excerpts + theme excerpts) ----
   const labelPool = []; for (let i = 0; i < 10; i++){ const el = document.createElement('div'); el.className = 'lbl'; el.hidden = true; el.innerHTML = '<span class="lx"></span><span class="ln"></span>'; ui.labels.appendChild(el); labelPool.push(el); }
-  const heroes = scene.items.filter(r => r.home.scale >= 1.35).sort((a, b) => b.home.scale - a.home.scale || b.z - a.z).slice(0, 9);
+  const isHero = r => !r.home.halo && r.home.scale >= 1.2;
   const P = { x: 0, y: 0, visible: false, depth: 0, halfH: 0, halfW: 0 };
   function placeLabels(){
     const st = seq.state; const r = stage.getBoundingClientRect(); const placed = []; let used = 0;
     const showOverview = (st === 'GUIDED_OVERVIEW' || st === 'MANUAL_EXPLORE') && r.width > 640;
-    const list = showOverview ? heroes : (st === 'GUIDED_THEME' || (st === 'MANUAL_FOCUS' && themeRecs.length)) ? themeRecs : [];
+    let list;
+    if (showOverview){ list = []; for (const rec of scene.items){ if (!isHero(rec) || rec.alpha < 0.5 || rec.pending) continue; const Q = {}; scene.project(rec, Q); if (!Q.visible || Q.halfH < 46 || Q.x < r.width*0.08 || Q.x > r.width*0.9) continue; if (Q.x < r.width*0.52 && Q.y - Q.halfH*0.35 < r.height*0.36) continue; rec._h = Q.halfH; list.push(rec); } list.sort((a, b) => b._h - a._h); const seen = new Set(); list = list.filter(rec => { const k = rec.c.excerpt || rec.c.commitment; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6); }
+    else list = (st === 'GUIDED_THEME' || (st === 'MANUAL_FOCUS' && themeRecs.length)) ? themeRecs : [];
     for (const rec of list){ if (used >= labelPool.length) break; if (rec.alpha < 0.5 || rec.pending) continue; scene.project(rec, P); if (!P.visible || P.depth > 0.9995) continue;
       const el = labelPool[used]; const w = Math.min(showOverview ? 220 : 190, r.width*0.2), h = showOverview ? 64 : 58;
       const cands = [[P.x + P.halfW + 16, P.y - P.halfH*0.35], [P.x - P.halfW - 16 - w, P.y - P.halfH*0.35], [P.x - w/2, P.y + P.halfH + 12], [P.x - w/2, P.y - P.halfH - h - 8]];
@@ -987,7 +1016,7 @@ window.AC = window.AC || {};
       if (x < 0) continue;
       placed.push({ x, y, w, h });
       el.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)'; el.style.width = w + 'px';
-      el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && rec.home.scale > 1.5); el.hidden = false; used++; }
+      el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && P.halfH > 110); el.hidden = false; used++; }
     for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
   }
   scene.onFrame = placeLabels;

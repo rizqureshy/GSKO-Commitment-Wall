@@ -52,15 +52,15 @@ window.AC = window.AC || {};
     random: AC.data.mulberry32(7),
     onEnter(kind, data, o){
       ui.title.classList.add('away');
-      if (kind === 'overview'){ ui.title.classList.remove('away'); return; }
+      if (kind === 'overview'){ ui.title.classList.remove('away'); scene.glide(); return; }
       hideTheme(); scene.release();
       if (kind === 'focus'){ const rec = scene.byId.get(data.id); if (!rec) return; if (!o || !o.manual) scene.saveViewpoint(); scene.focus(rec); showFocus(data, 'One promise'); }
       if (kind === 'theme'){ hideFocus(); const recs = [data.lead].concat(data.related).map(c => scene.byId.get(c.id)).filter(Boolean); if (!o || !o.manual) scene.saveViewpoint(); scene.group(recs); showTheme(data, recs); }
       if (kind === 'arrival'){ const recs = data.ids.map(id => scene.byId.get(id)).filter(Boolean); if (!recs.length) return; scene.saveViewpoint(); recs.forEach(introduce); scene.arrival(recs[0]); showArrival(recs, data.remaining); const rel = related(recs[0].c, 6).map(c => c.id); setTimeout(() => scene.pulse(rel), 900); }
     },
-    onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(); }
+    onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(undefined, seq.state.startsWith('GUIDED')); }
   });
-  seq.onChange(s => { renderStatus(s); });
+  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); });
 
   function renderStatus(s){
     const st = s.state; const guided = st.startsWith('GUIDED'); const manual = st.startsWith('MANUAL');
@@ -98,12 +98,14 @@ window.AC = window.AC || {};
 
   // ---- labels (overview excerpts + theme excerpts) ----
   const labelPool = []; for (let i = 0; i < 10; i++){ const el = document.createElement('div'); el.className = 'lbl'; el.hidden = true; el.innerHTML = '<span class="lx"></span><span class="ln"></span>'; ui.labels.appendChild(el); labelPool.push(el); }
-  const heroes = scene.items.filter(r => r.home.scale >= 1.35).sort((a, b) => b.home.scale - a.home.scale || b.z - a.z).slice(0, 9);
+  const isHero = r => !r.home.halo && r.home.scale >= 1.2;
   const P = { x: 0, y: 0, visible: false, depth: 0, halfH: 0, halfW: 0 };
   function placeLabels(){
     const st = seq.state; const r = stage.getBoundingClientRect(); const placed = []; let used = 0;
     const showOverview = (st === 'GUIDED_OVERVIEW' || st === 'MANUAL_EXPLORE') && r.width > 640;
-    const list = showOverview ? heroes : (st === 'GUIDED_THEME' || (st === 'MANUAL_FOCUS' && themeRecs.length)) ? themeRecs : [];
+    let list;
+    if (showOverview){ list = []; for (const rec of scene.items){ if (!isHero(rec) || rec.alpha < 0.5 || rec.pending) continue; const Q = {}; scene.project(rec, Q); if (!Q.visible || Q.halfH < 46 || Q.x < r.width*0.08 || Q.x > r.width*0.9) continue; if (Q.x < r.width*0.52 && Q.y - Q.halfH*0.35 < r.height*0.36) continue; rec._h = Q.halfH; list.push(rec); } list.sort((a, b) => b._h - a._h); const seen = new Set(); list = list.filter(rec => { const k = rec.c.excerpt || rec.c.commitment; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6); }
+    else list = (st === 'GUIDED_THEME' || (st === 'MANUAL_FOCUS' && themeRecs.length)) ? themeRecs : [];
     for (const rec of list){ if (used >= labelPool.length) break; if (rec.alpha < 0.5 || rec.pending) continue; scene.project(rec, P); if (!P.visible || P.depth > 0.9995) continue;
       const el = labelPool[used]; const w = Math.min(showOverview ? 220 : 190, r.width*0.2), h = showOverview ? 64 : 58;
       const cands = [[P.x + P.halfW + 16, P.y - P.halfH*0.35], [P.x - P.halfW - 16 - w, P.y - P.halfH*0.35], [P.x - w/2, P.y + P.halfH + 12], [P.x - w/2, P.y - P.halfH - h - 8]];
@@ -112,7 +114,7 @@ window.AC = window.AC || {};
       if (x < 0) continue;
       placed.push({ x, y, w, h });
       el.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)'; el.style.width = w + 'px';
-      el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && rec.home.scale > 1.5); el.hidden = false; used++; }
+      el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && P.halfH > 110); el.hidden = false; used++; }
     for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
   }
   scene.onFrame = placeLabels;

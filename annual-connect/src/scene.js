@@ -35,11 +35,11 @@ window.AC = window.AC || {};
       // atmosphere
       float f = smoothstep(uFogNear, uFogFar, vZ);
       f *= (1.0 - vState.x*0.85);
-      c = mix(c, uFog, f*0.82);
+      c = mix(c, uFog, f*0.7);
       c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11))), f*0.5);
       // dim the world when something is featured; featured prints stay bright
       float keep = clamp(vState.x, 0.0, 1.0);
-      c *= mix(1.0 - 0.62*uDim, 1.12, keep);
+      c *= mix(1.0 - 0.74*uDim, 1.12, keep);
       // highlight: a faint warm lift
       c += keep*vec3(0.06, 0.05, 0.03);
       c *= mix(0.3, 1.0, alpha);
@@ -88,7 +88,7 @@ window.AC = window.AC || {};
     geo.setAttribute('aTone', new T.InstancedBufferAttribute(aTone, 2));
     const stateAttr = new T.InstancedBufferAttribute(aState, 3).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
     const mat = new T.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: {
-      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 18 }, uFogFar: { value: 46 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
+      uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 20 }, uFogFar: { value: 72 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
 
     // connection arcs (shared intention)
@@ -118,15 +118,20 @@ window.AC = window.AC || {};
 
     // ---- camera model ----
     const cam = { pos: new T.Vector3(0, 1.6, 26), look: new T.Vector3(0, 1.6, 0) };
-    const home = { pos: cam.pos.clone(), look: cam.look.clone() };
+    // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
+    const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
+    function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
+    function glidePose(now){ const narrow = camera.aspect < 0.9; const c = AC.layout.cameraAt(kNow(now)); return { pos: new T.Vector3(c.pos.x, c.pos.y + (narrow ? 1.6 : 0), c.pos.z + (narrow ? 13 : 0)), look: new T.Vector3(c.look.x, c.look.y + (narrow ? 1.6 : 0), c.look.z) }; }
     const user = { az: 0, el: 0, dist: 0, azT: 0, elT: 0, distT: 0 };  // bounded personal exploration offsets
     let tween = null;             // { from:{pos,look}, to:{pos,look}, t0, dur }
     let saved = null;             // viewpoint saved before a focus
     const tmpV = new T.Vector3(), tmpR = new T.Vector3(), tmpU = new T.Vector3(), tmpF = new T.Vector3();
-    function flyTo(pos, look, dur){
+    function flyTo(pos, look, dur, dynamic){
       if (rm()) dur = Math.min(dur, 300);
-      tween = { from: { pos: cam.pos.clone(), look: cam.look.clone() }, to: { pos: pos.clone(), look: look.clone() }, t0: performance.now(), dur };
+      tween = { from: { pos: cam.pos.clone(), look: cam.look.clone() }, to: { pos: pos.clone(), look: look.clone() }, t0: performance.now(), dur, dynamic: !!dynamic };
     }
+    function startGlide(dur){ if (glideOn && !tween) return; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 2400 : dur, true); }
+    function holdCamera(){ glideOn = false; if (tween && tween.dynamic) tween.dynamic = false; }
     function viewpoint(){ return { pos: (tween ? tween.to.pos : cam.pos).clone(), look: (tween ? tween.to.look : cam.look).clone() }; }
     function dimTo(v){ dimTarget = v; }
     let dimTarget = 0, dim = 0;
@@ -191,15 +196,17 @@ window.AC = window.AC || {};
 
     // ---- resize ----
     function resize(){ const r = stage.getBoundingClientRect(); const dpr = Math.min(2, window.devicePixelRatio || 1); renderer.setPixelRatio(dpr); renderer.setSize(Math.max(2, r.width), Math.max(2, r.height), false); camera.aspect = r.width/Math.max(1, r.height); camera.updateProjectionMatrix();
-      const narrow = camera.aspect < 0.9; home.pos.set(0, 1.6, narrow ? 40 : 26); home.look.set(0, narrow ? 3.2 : 1.6, 0); }
+    }
     resize(); new ResizeObserver(resize).observe(stage);
+    { const g = glidePose(performance.now()); cam.pos.copy(g.pos); cam.look.copy(g.look); }
 
     // ---- frame loop ----
     let last = performance.now(); let hoverRec = null; let rippleT = 99;
     function tick(now){
       const dt = Math.min(0.05, (now - last)/1000); last = now; const t = now/1000;
       // camera
-      if (tween){ const k = clamp((now - tween.t0)/tween.dur, 0, 1); const e = easeInOut(k); cam.pos.lerpVectors(tween.from.pos, tween.to.pos, e); cam.look.lerpVectors(tween.from.look, tween.to.look, e); if (k >= 1) tween = null; }
+      if (tween){ if (tween.dynamic){ const g = glidePose(now); tween.to.pos.copy(g.pos); tween.to.look.copy(g.look); } const k = clamp((now - tween.t0)/tween.dur, 0, 1); const e = easeInOut(k); cam.pos.lerpVectors(tween.from.pos, tween.to.pos, e); cam.look.lerpVectors(tween.from.look, tween.to.look, e); if (k >= 1) tween = null; }
+      else if (glideOn){ const g = glidePose(now); cam.pos.copy(g.pos); cam.look.copy(g.look); }
       // user offsets (bounded orbit) with damping
       user.az += (user.azT - user.az)*(1 - Math.pow(0.001, dt)); user.el += (user.elT - user.el)*(1 - Math.pow(0.001, dt)); user.dist += (user.distT - user.dist)*(1 - Math.pow(0.001, dt));
       const quiet = rm(); const driftAz = quiet ? 0 : Math.sin(t*0.07)*0.045, driftEl = quiet ? 0 : Math.sin(t*0.05 + 1)*0.02;
@@ -226,7 +233,7 @@ window.AC = window.AC || {};
         aState[i*3] = r.hl; aState[i*3 + 1] = 0; aState[i*3 + 2] = r.alpha;
       }
       mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
-      mat.uniforms.uFogFar.value = n > 600 ? 40 : 46; mat.uniforms.uFogNear.value = n > 600 ? 15 : 18;
+      mat.uniforms.uFogFar.value = n > 600 ? 64 : 72; mat.uniforms.uFogNear.value = n > 600 ? 18 : 20;
       arcMat.opacity += (arcTarget - arcMat.opacity)*(1 - Math.pow(0.05, dt)); if (arcMat.opacity < 0.01 && arcs.children.length && arcTarget === 0) disposeArcs();
       arcs.visible = arcMat.opacity > 0.01;
       if (ripple.visible){ rippleT += dt; const k = clamp(rippleT/2.2, 0, 1); ripple.scale.setScalar(0.6 + k*4.5); ripple.material.opacity = (1 - k)*0.5; ripple.quaternion.copy(camera.quaternion); if (k >= 1) ripple.visible = false; }
@@ -241,12 +248,15 @@ window.AC = window.AC || {};
       get count(){ return items.length; },
       loadPhotos(url){ return new Promise(res => { const img = new Image(); img.onload = () => { photoTex.image = img; photoTex.needsUpdate = true; mat.uniforms.uPhotoOK.value = 1; photoOK = 1; res(true); }; img.onerror = () => { mat.uniforms.uPhotoOK.value = 0; res(false); }; img.src = url; }); },
       get photosReady(){ return photoOK === 1; },
-      goHome(dur){ flyTo(home.pos, home.look, dur == null ? 1800 : dur); dimTo(0); },
-      saveViewpoint(){ saved = viewpoint(); user.azT = user.az; user.elT = user.el; user.distT = user.dist; },
-      restoreViewpoint(dur){ if (saved){ flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } dimTo(0); },
-      focus(rec, dur){ setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
-      arrival(rec, dur){ setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.home.x, rec.home.y, rec.home.z - 0.05); ripple.visible = true; rippleT = 0; },
-      group(recs, dur){ setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
+      glide(dur){ startGlide(dur); dimTo(0); },
+      hold(){ holdCamera(); },
+      get gliding(){ return glideOn; },
+      saveViewpoint(){ saved = Object.assign(viewpoint(), { k: kNow(performance.now()), glide: glideOn }); user.azT = user.az; user.elT = user.el; user.distT = user.dist; },
+      /* resumeGlide: return to the glide at the point where it was left (guided), else return to the exact still viewpoint (manual). */
+      restoreViewpoint(dur, resumeGlide){ dimTo(0); if (!saved) return; if (saved.glide && resumeGlide){ const theta = Math.acos(clamp(1 - 2*saved.k, -1, 1)); phase = theta - OMEGA*performance.now()/1000; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 1800 : dur, true); } else { glideOn = false; flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } },
+      focus(rec, dur){ holdCamera(); setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
+      arrival(rec, dur){ holdCamera(); setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.home.x, rec.home.y, rec.home.z - 0.05); ripple.visible = true; rippleT = 0; },
+      group(recs, dur){ holdCamera(); setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
       pulse(ids){ ids.forEach(id => { const r = byId.get(id); if (r){ r.hl = 0.5; } }); },
       release(){ clearFeatured(); clearArcs(); dimTo(0); },
       pick, project,

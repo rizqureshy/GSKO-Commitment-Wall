@@ -111,7 +111,7 @@ window.AC = window.AC || {};
         if (current) onExit(current.kind);
         go('MANUAL_EXPLORE', null);
       },
-      resume(){ clear(); featured = featured.slice(-Math.floor(getPool().length*0.5)); scheduleOverview(1200); },
+      resume(){ clear(); featured = featured.slice(-Math.floor(getPool().length*0.5)); scheduleOverview(TIMING.breathe); },
       pause(){ clear(); if (current) onExit(current.kind, { silent: true }); go('PAUSED', null); },
       enqueueArrival(id){ arrivals.push(id); emit(); if (state === 'GUIDED_OVERVIEW'){ clear(); later(1200, nextStep); } },
       /* Manual theme exploration: show the group but under manual control. */

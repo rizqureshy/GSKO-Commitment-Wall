@@ -52,6 +52,14 @@ Keyboard: `Escape` closes a promise or dialog, `/` opens search. "All commitment
 The focused commitment is always real DOM text, never canvas, so it is readable, selectable and
 available to assistive technology.
 
+## Composition and the glide
+
+People are laid along one ribbon that starts large at lower left and thins into the distance at upper right,
+with themes occupying stretches of the ribbon. Home positions never move. In guided view the camera glides
+alongside the ribbon, one slow pass each way over three minutes, so the stream appears to flow past. A focus
+holds the camera; returning picks the glide up where it left off. Closing a manual selection returns to the
+exact still viewpoint the viewer had.
+
 ## Motion contract (defaults, for tuning)
 
 Overview gap 10–15 s · focus transition 2 s · reading time `max(12, 5 + words/2.5)` s · return 1.8 s ·
