@@ -94,10 +94,20 @@ window.AC = window.AC || {};
       uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 30 }, uFogFar: { value: 98 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
 
-    // one luminous thread that follows the ribbon's own path, slightly below its centre line
+    // horizon: a planet limb far behind the string, with a thin warm rim of light
     {
-      const mk = (off, opacity) => { const pts = []; for (let k = 0; k <= 160; k++){ const t = 0.01 + 0.95*k/160; const sp = AC.layout.spine(t), f = AC.layout.frame(t); pts.push(new T.Vector3(sp.x + f.U.x*off, sp.y + f.U.y*off, sp.z + f.U.z*off)); } return new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: 0xD8CDB9, transparent: true, opacity })); };
-      scene.add(mk(-0.3, 0.16), mk(-0.42, 0.05), mk(-0.18, 0.05));
+      const H = AC.layout.HORIZON;
+      const limbVert = `varying vec3 vN, vV, vW; void main(){ vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix*vec4(position,1.0)).xyz; gl_Position = projectionMatrix*mv; }`;
+      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim };
+      const body = new T.Mesh(new T.SphereGeometry(H.radius, 96, 64), new T.ShaderMaterial({ uniforms: limbU, vertexShader: limbVert,
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = 1.0 - 0.75*uDim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
+      body.position.set(H.center.x, H.center.y, H.center.z); scene.add(body);
+      const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.04, 96, 64), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: limbU, vertexShader: limbVert,
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim); gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
+      glow.position.copy(body.position); scene.add(glow);
+      // two faint lines of flow following the string, as in the reference
+      const flowMat = new T.LineBasicMaterial({ color: 0xCFC5B4, transparent: true, opacity: 0.085 });
+      [[0.9, 0.6], [-1.3, -0.5]].forEach(([oy, oz], i) => { const pts = []; for (let k = 0; k <= 120; k++){ const t = 0.02 + 0.93*k/120; const s = AC.layout.spine(t); pts.push(new T.Vector3(s.x, s.y + oy*(1 + 1.8*t) + Math.sin(t*9 + i)*0.4*t, s.z + oz*(1 + 2*t))); } scene.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), flowMat)); });
     }
 
     // connection arcs (shared intention)
