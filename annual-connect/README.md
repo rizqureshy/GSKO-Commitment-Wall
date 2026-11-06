@@ -52,20 +52,19 @@ Keyboard: `Escape` closes a promise or dialog, `/` opens search. "All commitment
 The focused commitment is always real DOM text, never canvas, so it is readable, selectable and
 available to assistive technology.
 
-## Composition and the stream
+## The ribbon and the stream
 
-A wave of portraits rises out of a planet horizon on the far left, swells until its crest touches the top of the
-frame, fills the right of the picture and passes the viewer at lower right. The stream moves: prints travel
-along it, fade out past the viewer and re-enter at the horizon, one full loop every two and a half minutes
-(`STREAM_PERIOD` in `src/layout.js`). Each person has a deterministic phase and offset in the stream, so relative
-positions and theme neighbourhoods are preserved as they travel. While a promise, a shared intention or an
-arrival is on screen the stream eases to a stop so the text and portrait stay still, then resumes. Pause stops
-it; reduced motion stops it. Closing a manual selection returns to the viewpoint the viewer had.
+Portraits form one continuous ribbon along a smooth curved path: small and distant at the left rear, sweeping
+through the middle, opening toward the viewer across the centre-right foreground. Each person has an ordered
+position along the path and a stable lane offset around it (seven staggered lanes); nothing is recalculated
+when the ribbon moves. One shared progress value advances the whole procession. Prints fade out past the viewer
+and re-enter at the far end, so the loop is seamless. A single faint luminous thread follows the same path.
 
-The thread is also yours to move: the mouse wheel, a trackpad, or the left and right arrow keys scrub the
-stream forward and back with a little inertia. Doing so is a manual action and pauses the guided sequence.
-Automatic features are drawn only from the front of the stream, where people are large enough to read, and
-since everyone passes the front in turn, the rotation stays fair over time.
+In guided view the ribbon advances slowly on its own (`STREAM_PERIOD` in `src/layout.js`, one loop in about
+three minutes). The mouse wheel, a trackpad, a touch drag, or the left and right arrow keys move it forward and
+back with gentle easing and no momentum; doing so takes manual control and pauses the guided sequence. Selecting
+a portrait stops the ribbon and brings that commitment forward; closing it restores the exact ribbon position.
+"Resume guided view" restarts the automatic journey. The camera stays broadly still throughout.
 
 ## Motion contract (defaults, for tuning)
 

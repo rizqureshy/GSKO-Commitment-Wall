@@ -1,76 +1,66 @@
-/* Annual Connect — layout and stream.
-   Every contribution gets a deterministic place in the stream from its id and theme: a phase along the flow and an
-   offset across it. The stream itself moves: prints rise out of the horizon on the far left, swell into a wave that
-   crests near the top of the frame and fills the right of the picture, pass the viewer at lower right, and re-enter
-   at the horizon. Relative positions are preserved as they travel, so neighbourhoods travel together. */
+/* Annual Connect — the ribbon.
+   One smooth curved path in space. Portraits sit in a few staggered lanes around that path, each with a stable
+   lane offset and an ordered position along it. A single shared progress value moves the whole procession along
+   the path; nothing is recalculated when it moves. The ribbon begins small and distant at the left rear, sweeps
+   through the middle and opens toward the viewer across the centre-right foreground. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
   const { hashStr, mulberry32 } = AC.data;
   const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
 
-  // Theme order along the stream (phase bands), so a theme travels as one reach of the flow.
-  const ORDER = ['listening', 'learning', 'execution', 'colleagues', 'customers', 'collaboration'];
-  const STRETCH = {};
-  ORDER.forEach((id, i) => { STRETCH[id] = [i/ORDER.length, (i + 1)/ORDER.length]; });
-
-  // Spine of the stream: a long horizontal run from the horizon across the frame, then a bend forward toward the
-  // viewer. A cubic curve in the ground plane; t = 0 at the horizon (far left), t = 1 just past the viewer.
-  const B = [[-64, -58], [4, -24], [10, 4], [20, 36]];
+  // The path: a cubic curve. t = 0 far left rear, t = 1 past the viewer at centre-right.
+  const P = [[-48, 3.0, -64], [-18, -8.5, -34], [15, -5.0, -4], [7, 2.0, 30]];
   function spine(t){
     const u = 1 - t, a = u*u*u, b = 3*u*u*t, c = 3*u*t*t, d = t*t*t;
-    const x = a*B[0][0] + b*B[1][0] + c*B[2][0] + d*B[3][0];
-    const z = a*B[0][1] + b*B[1][1] + c*B[2][1] + d*B[3][1];
-    return { x, y: 0.2 + 2.2*t + 1.1*Math.sin(Math.PI*2*t), z };
+    return { x: a*P[0][0] + b*P[1][0] + c*P[2][0] + d*P[3][0], y: a*P[0][1] + b*P[1][1] + c*P[2][1] + d*P[3][1], z: a*P[0][2] + b*P[1][2] + c*P[2][2] + d*P[3][2] };
   }
-  // Half-height of the sheet across the flow: a thread at the horizon, a wall as it passes the viewer.
-  function halfHeight(t){ return 0.8 + 8.5*Math.pow(t, 1.2); }
-  // A gentle crest through the middle so the upper edge lifts a little, as in the reference.
-  function lift(t){ return 1.6*Math.sin(Math.PI*Math.min(1, t*0.95))*smooth(0.15, 0.45, t); }
+  function tangent(t){ const a = spine(Math.max(0, t - 0.004)), b = spine(Math.min(1, t + 0.004)); const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z; const l = Math.hypot(dx, dy, dz) || 1; return { x: dx/l, y: dy/l, z: dz/l }; }
+  // Lane frame at t: A is the horizontal direction across the path, U the upward direction across it.
+  function frame(t){
+    const T = tangent(t);
+    let ax = T.z, az = -T.x; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;      // cross(T, up), horizontal
+    const ux = -az*T.y, uy = az*T.x - ax*T.z, uz = ax*T.y;                                // cross(A, T)
+    return { A: { x: ax, y: 0, z: az }, U: { x: ux, y: uy, z: uz } };
+  }
+  // Ribbon width (up/down across the path) and depth (sideways across it) grow toward the viewer.
+  function width(t){ return 0.5 + 3.3*Math.pow(t, 1.2); }
+  function depth(t){ return 0.6 + 2.4*Math.pow(t, 1.1); }
 
-  function homeFor(contribution){
+  const LANES = 7;
+  /* Lane and order come from the index in the collection; the id only seeds small variation. */
+  function homeFor(contribution, index, total){
     const rng = mulberry32(hashStr(contribution.id));
-    const theme = contribution.themeIds[0];
-    const st = STRETCH[theme] || [0, 1];
-    const phase = (st[0] + (st[1] - st[0])*rng() + (rng() - 0.5)*0.1 + 1) % 1;
+    const n = Math.max(1, total || 1);
+    const lane = index % LANES;
+    const angle = (lane/LANES)*Math.PI*2 + 0.6 + (rng() - 0.5)*0.5;        // staggered around the path
+    const radial = 0.55 + 0.45*rng();                                      // within the lane band, not only on its rim
+    const phase = ((index + 0.5)/n + (rng() - 0.5)*0.35/n + 1) % 1;        // ordered along the path, slight jitter
     const hasPhoto = !!contribution.portrait;
-    const halo = rng() < 0.06;
-    const fore = !halo && hasPhoto && rng() < 0.16;              // nearest layer when it passes the viewer
-    // Offset across the sheet: mostly toward the centre line, some to the edges, so the mass has no hard border.
-    const u = rng() < 0.6 ? (rng() + rng() - 1) : (rng()*2 - 1);
-    const v = rng() - 0.5;                                        // depth jitter through the sheet
-    const xj = (rng() - 0.5);
-    const hero = rng();
-    const sizeK = !hasPhoto ? 0.8 + rng()*0.25 : hero > 0.975 ? 1.9 : hero > 0.9 ? 1.4 : 0.85 + rng()*0.3;
+    const sizeK = (hasPhoto ? 0.92 + rng()*0.26 : 0.84 + rng()*0.12)*(rng() > 0.93 ? 1.25 : 1);
     const aspect = rng() > 0.5 ? 0.8 : 0.667;
-    const drift = { ax: 0.12 + rng()*0.1, ay: 0.08 + rng()*0.08, px: rng()*Math.PI*2, py: rng()*Math.PI*2, sx: 0.06 + rng()*0.04, sy: 0.05 + rng()*0.04 };
-    const home = { phase, u, v, xj, halo, fore, sizeK, aspect, drift, scale: 1, t: phase, x: 0, y: 0, z: 0 };
+    const drift = { ax: 0.1 + rng()*0.08, ay: 0.07 + rng()*0.06, px: rng()*Math.PI*2, py: rng()*Math.PI*2, sx: 0.04 + rng()*0.03, sy: 0.03 + rng()*0.03 };
+    const home = { phase, lane, angle, radial, sizeK, aspect, drift, halo: false, scale: 1, t: phase, x: 0, y: 0, z: 0 };
     place(home, phase, home);
     return home;
   }
 
-  /* Position and scale of a print at stream position t (0..1). Writes x, y, z, scale, t into out. */
+  /* Position and scale of a print at path position t (0..1). Writes x, y, z, scale, t into out. */
   function place(home, t, out){
-    const s = spine(t);
-    const hh = halfHeight(t)*(home.halo ? 2.2 : 1);
-    let x = s.x + home.xj*(1 + 4*t);
-    let y = s.y + lift(t)*(0.5 + 0.5*home.u) + home.u*hh;
-    let z = s.z + home.v*(2 + 7*t) - (home.halo ? 8 : 0);
-    if (home.fore && t > 0.72){ const k = smooth(0.72, 0.9, t); z += 10*k; y -= 2.5*k; }
-    // Scale grows toward the viewer; prints fade in at the horizon and out past the viewer so the loop is seamless.
-    const base = (0.6 + 1.6*Math.pow(t, 1.9))*(home.fore ? 1.25 : 1)*(home.halo ? 0.7 : 1);
-    const loop = smooth(0, 0.035, t)*(1 - smooth(0.96, 1, t));
-    out.x = x; out.y = y; out.z = z; out.scale = base*home.sizeK*Math.max(0.001, loop); out.t = t;
+    const s = spine(t), f = frame(t);
+    const w = width(t)*home.radial, d = depth(t)*home.radial;
+    const cu = Math.cos(home.angle)*w, ca = Math.sin(home.angle)*d;
+    out.x = s.x + f.U.x*cu + f.A.x*ca; out.y = s.y + f.U.y*cu; out.z = s.z + f.U.z*cu + f.A.z*ca;
+    const base = 0.42 + 1.75*Math.pow(t, 2.0);
+    const loop = smooth(0, 0.04, t)*(1 - smooth(0.95, 1, t));
+    out.scale = base*home.sizeK*Math.max(0.001, loop); out.t = t;
     return out;
   }
 
-  // Guided camera: a very gentle sway. The stream provides the motion; the camera only breathes.
+  // The camera stays broadly still; the ribbon does the moving. A barely perceptible sway in guided view.
   function cameraAt(k){
-    return { pos: { x: 2 + 2*k, y: 3.4 - 0.4*k, z: 38 - 2*k }, look: { x: -10 + 3*k, y: 1.6 - 0.3*k, z: -12 + 3*k } };
+    return { pos: { x: 2.0 + 1.2*k, y: 2.6 - 0.3*k, z: 40 - 1.5*k }, look: { x: -7 + 1.5*k, y: -1.4 - 0.2*k, z: -12 + 1.5*k } };
   }
 
-  // Horizon: a planet limb far behind the stream, low and to the left. The stream rises from just above its edge.
-  const HORIZON = { center: { x: -118, y: -186, z: -150 }, radius: 176 };
-
-  AC.layout = { homeFor, place, spine, cameraAt, ORDER, HORIZON, STREAM_PERIOD: 150 };
+  AC.layout = { homeFor, place, spine, frame, cameraAt, LANES, STREAM_PERIOD: 170 };
 })(window.AC);

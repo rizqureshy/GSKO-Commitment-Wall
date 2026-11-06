@@ -42,7 +42,7 @@ window.AC = window.AC || {};
       c = mix(c, uFog, f*0.7);
       c = mix(c, vec3(dot(c, vec3(0.3,0.59,0.11))), f*0.5);
       // dim the world when something is featured; featured prints stay bright
-      c *= mix(1.0 - 0.74*uDim, 1.12, keep);
+      c *= mix(1.0 - 0.8*uDim, 1.12, keep);
       // highlight: a faint warm lift
       c += keep*vec3(0.06, 0.05, 0.03);
       c *= mix(0.3, 1.0, alpha);
@@ -94,20 +94,10 @@ window.AC = window.AC || {};
       uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 30 }, uFogFar: { value: 98 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
 
-    // horizon: a planet limb far behind the string, with a thin warm rim of light
+    // one luminous thread that follows the ribbon's own path, slightly below its centre line
     {
-      const H = AC.layout.HORIZON;
-      const limbVert = `varying vec3 vN, vV, vW; void main(){ vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix*vec4(position,1.0)).xyz; gl_Position = projectionMatrix*mv; }`;
-      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim };
-      const body = new T.Mesh(new T.SphereGeometry(H.radius, 96, 64), new T.ShaderMaterial({ uniforms: limbU, vertexShader: limbVert,
-        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = 1.0 - 0.75*uDim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
-      body.position.set(H.center.x, H.center.y, H.center.z); scene.add(body);
-      const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.04, 96, 64), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: limbU, vertexShader: limbVert,
-        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim); gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
-      glow.position.copy(body.position); scene.add(glow);
-      // two faint lines of flow following the string, as in the reference
-      const flowMat = new T.LineBasicMaterial({ color: 0xCFC5B4, transparent: true, opacity: 0.085 });
-      [[0.9, 0.6], [-1.3, -0.5]].forEach(([oy, oz], i) => { const pts = []; for (let k = 0; k <= 120; k++){ const t = 0.02 + 0.93*k/120; const s = AC.layout.spine(t); pts.push(new T.Vector3(s.x, s.y + oy*(1 + 1.8*t) + Math.sin(t*9 + i)*0.4*t, s.z + oz*(1 + 2*t))); } scene.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), flowMat)); });
+      const mk = (off, opacity) => { const pts = []; for (let k = 0; k <= 160; k++){ const t = 0.01 + 0.95*k/160; const sp = AC.layout.spine(t), f = AC.layout.frame(t); pts.push(new T.Vector3(sp.x + f.U.x*off, sp.y + f.U.y*off, sp.z + f.U.z*off)); } return new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: 0xD8CDB9, transparent: true, opacity })); };
+      scene.add(mk(-0.3, 0.16), mk(-0.42, 0.05), mk(-0.18, 0.05));
     }
 
     // connection arcs (shared intention)
@@ -120,11 +110,11 @@ window.AC = window.AC || {};
     const items = [];            // { c, home, cur, scaleCur, hl, alpha, target }
     const byId = new Map();
     const dummy = new T.Object3D();
-    function add(c, animateIn){
+    function add(c, animateIn, total){
       if (items.length >= MAXN) return null;
-      const home = AC.layout.homeFor(c);
+      const home = AC.layout.homeFor(c, items.length, total || items.length + 1);
       const i = items.length;
-      if (animateIn) home.phase = (0.6 - streamPos + 1) % 1;   // a newcomer enters where the stream is readable
+      if (animateIn) home.phase = ((0.62 - streamPos) % 1 + 1) % 1;   // a newcomer enters where the stream is readable
       const rec = { c, home, i, x: home.x, y: home.y, z: home.z, s: animateIn ? 0.001 : 1, hl: 0, hlT: 0, alpha: 1, alphaT: 1, zoff: animateIn ? 7 : 0, bornAt: performance.now(), animateIn: !!animateIn, hover: 0 };
       items.push(rec); byId.set(c.id, rec);
       const rng = AC.data.mulberry32(AC.data.hashStr(c.id + ':tone'));
@@ -139,7 +129,7 @@ window.AC = window.AC || {};
     // ---- camera model ----
     const cam = { pos: new T.Vector3(0, 1.6, 26), look: new T.Vector3(0, 1.6, 0) };
     // The stream: a position that advances around the loop. It eases to a stop while something is being read.
-    let streamPos = 0, streamSpeed = 1, streamSpeedT = 1, scrubVel = 0; const PL = { x: 0, y: 0, z: 0, scale: 1, t: 0 };
+    let streamPos = 0, streamSpeed = 1, streamSpeedT = 1, streamTarget = null; const PL = { x: 0, y: 0, z: 0, scale: 1, t: 0 };
     // Guided overview glides alongside the ribbon: one slow pass each way. People never move; the viewer does.
     const GLIDE_PERIOD = 180; const OMEGA = 2*Math.PI/GLIDE_PERIOD; let glideOn = false, phase = 0;
     function kNow(now){ return 0.5 - 0.5*Math.cos(phase + OMEGA*now/1000); }
@@ -239,18 +229,21 @@ window.AC = window.AC || {};
       // occlusion line
       let occA = null, occB = null; if (featuredIds.size && dim > 0.3){ occA = camera.position; }
       // stream advance
-      streamSpeed += (streamSpeedT - streamSpeed)*(1 - Math.pow(0.03, dt)); scrubVel *= Math.pow(0.08, dt); streamPos = ((streamPos + (quiet ? 0 : dt/AC.layout.STREAM_PERIOD*streamSpeed) + scrubVel*dt) % 1 + 1) % 1;
+      streamSpeed += (streamSpeedT - streamSpeed)*(1 - Math.pow(0.03, dt));
+      if (streamTarget != null){ const diff = streamTarget - streamPos; streamPos += diff*(1 - Math.pow(0.0008, dt)); if (Math.abs(diff) < 0.00004){ streamPos = streamTarget; streamTarget = null; } }
+      else if (!quiet) streamPos += dt/AC.layout.STREAM_PERIOD*streamSpeed;
       // instances
       const n = items.length; const camPos = camera.position;
       for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
         const dx = quiet ? 0 : Math.sin(t*h.drift.ax + h.drift.px)*h.drift.sx, dy = quiet ? 0 : Math.sin(t*h.drift.ay + h.drift.py)*h.drift.sy;
-        AC.layout.place(h, (h.phase + streamPos) % 1, PL); h.scale = PL.scale; h.t = PL.t; r.x = PL.x + dx; r.y = PL.y + dy; r.z = PL.z;
+        AC.layout.place(h, ((h.phase + streamPos) % 1 + 1) % 1, PL); h.scale = PL.scale; h.t = PL.t; r.x = PL.x + dx; r.y = PL.y + dy; r.z = PL.z;
         if (r.animateIn){ const k = clamp((now - r.bornAt)/2600, 0, 1); const e = easeOut(k); r.s = 0.001 + e*0.999; r.zoff = 7*(1 - e); if (k >= 1) r.animateIn = false; }
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
         let aT = 1;
         if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.4 + BASE*(h.scale*0.7 + f.home.scale*1.7); if (perp < rad){ aT = Math.min(aT, perp < rad*0.55 ? 0 : 0.08 + 0.3*(perp/rad)); } } } }
         if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (dc < 13) aT = 0; else if (dc < 20) aT = Math.min(aT, 0.1 + 0.3*(dc - 13)/7); }
+        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ tmpV.set(r.x, r.y, r.z).project(camera); if (camera.aspect < 0.9 ? tmpV.y < 0.05 : tmpV.x > 0.0) aT = Math.min(aT, 0.1); }
         if (!r.c.eligible || r.pending) aT = 0;
         r.alphaT = aT; r.alpha += (r.alphaT - r.alpha)*(1 - Math.pow(0.03, dt));
         const sc = r.s*h.scale*(1 + r.hl*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
@@ -281,7 +274,7 @@ window.AC = window.AC || {};
       restoreViewpoint(dur, resumeGlide){ dimTo(0); if (!saved) return; if (saved.glide && resumeGlide){ const theta = Math.acos(clamp(1 - 2*saved.k, -1, 1)); phase = theta - OMEGA*performance.now()/1000; glideOn = true; const g = glidePose(performance.now()); flyTo(g.pos, g.look, dur == null ? 1800 : dur, true); } else { glideOn = false; flyTo(saved.pos, saved.look, dur == null ? 1800 : dur); } },
       stream(v){ streamSpeedT = v; },
       /* Scrub the thread by hand: positive moves it forward (toward the viewer), negative back toward the horizon. */
-      scrub(d){ scrubVel = Math.max(-0.08, Math.min(0.08, scrubVel + d)); },
+      scrub(d){ if (streamTarget == null) streamTarget = streamPos; streamTarget = Math.max(streamPos - 0.2, Math.min(streamPos + 0.2, streamTarget + d)); },
       get streamPos(){ return streamPos; },
       focus(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
       arrival(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.x, rec.y, rec.z - 0.05); ripple.visible = true; rippleT = 0; },

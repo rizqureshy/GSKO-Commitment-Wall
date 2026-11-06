@@ -22,7 +22,7 @@ window.AC = window.AC || {};
   try { scene = AC.scene.createScene({ stage, canvas: $('#gl'), poolSize, reducedMotion: () => reduced }); } catch (e){ console.error(e); stage.classList.add('nogl'); return; }
   scene.loadPhotos((AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.atlas) || 'assets/portraits/atlas.jpg').then(ok => { if (!ok) note('Portraits could not load. Showing initials instead.'); });
 
-  adapter.list().forEach(c => scene.add(c, false));
+  adapter.list().forEach((c, i, arr) => scene.add(c, false, arr.length));
 
   // ---- helpers ----
   function excerpt(c, n){ if (c && c.excerpt) return c.excerpt; const text = c && c.commitment || c; let t = String(text).replace(/^I will\s+/i, '').replace(/[.]+$/, ''); const w = t.split(/\s+/); t = w.slice(0, n || 5).join(' '); return t.charAt(0).toUpperCase() + t.slice(1); }
@@ -47,7 +47,7 @@ window.AC = window.AC || {};
 
   // ---- sequencer ----
   const seq = AC.sequencer.createSequencer({
-    getPool: () => { const front = scene.items.filter(r => !r.pending && r.alpha > 0.5 && r.home.t > 0.5 && r.home.t < 0.9); return (front.length >= 3 ? front : scene.items.filter(r => !r.pending)).map(r => r.c); },
+    getPool: () => { const front = scene.items.filter(r => !r.pending && r.alpha > 0.5 && r.home.t > 0.55 && r.home.t < 0.92); return (front.length >= 3 ? front : scene.items.filter(r => !r.pending)).map(r => r.c); },
     getRelated: (c, k) => related(c, k),
     random: AC.data.mulberry32(7),
     onEnter(kind, data, o){
@@ -60,7 +60,7 @@ window.AC = window.AC || {};
     },
     onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(undefined, seq.state.startsWith('GUIDED')); }
   });
-  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); if (s.state === 'PAUSED') scene.stream(0); else if (s.state === 'GUIDED_OVERVIEW' || s.state === 'MANUAL_EXPLORE') scene.stream(1); });
+  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); scene.stream(s.state === 'GUIDED_OVERVIEW' ? 1 : 0); });
 
   function renderStatus(s){
     const st = s.state; const guided = st.startsWith('GUIDED'); const manual = st.startsWith('MANUAL');
@@ -98,7 +98,7 @@ window.AC = window.AC || {};
 
   // ---- labels (overview excerpts + theme excerpts) ----
   const labelPool = []; for (let i = 0; i < 10; i++){ const el = document.createElement('div'); el.className = 'lbl'; el.hidden = true; el.innerHTML = '<span class="lx"></span><span class="ln"></span>'; ui.labels.appendChild(el); labelPool.push(el); }
-  const isHero = r => !r.home.halo && r.home.scale >= 1.2;
+  const isHero = r => r.home.t > 0.55 && !!r.c.portrait;
   const P = { x: 0, y: 0, visible: false, depth: 0, halfH: 0, halfW: 0 };
   function placeLabels(){
     const st = seq.state; const r = stage.getBoundingClientRect(); const placed = []; let used = 0;
@@ -123,12 +123,12 @@ window.AC = window.AC || {};
   let down = null, dragged = false;
   stage.addEventListener('pointerdown', e => { if (e.target.closest('button, a, input, .panel, dialog')) return; down = { x: e.clientX, y: e.clientY, id: e.pointerId }; dragged = false; });
   stage.addEventListener('pointermove', e => {
-    if (down && (e.buttons & 1)){ const dx = e.clientX - down.x, dy = e.clientY - down.y; if (!dragged && Math.hypot(dx, dy) > 6){ dragged = true; stage.setPointerCapture(down.id); manualIntent(); } if (dragged){ scene.orbitBy(-dx*0.0022, dy*0.0016); down.x = e.clientX; down.y = e.clientY; } return; }
+    if (down && (e.buttons & 1)){ const dx = e.clientX - down.x, dy = e.clientY - down.y; if (!dragged && Math.hypot(dx, dy) > 6){ dragged = true; stage.setPointerCapture(down.id); manualIntent(); } if (dragged && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ scene.scrub((-dy - dx*0.5)*0.0006); down.x = e.clientX; down.y = e.clientY; } return; }
     if (isTouch) return; const rec = scene.pick(e.clientX, e.clientY); scene.setHover(rec); stage.classList.toggle('hover', !!rec);
   });
   stage.addEventListener('pointerup', e => { if (!down) return; const wasDrag = dragged; down = null; if (wasDrag) return; if (e.target.closest('button, a, input, .panel, dialog')) return; const rec = scene.pick(e.clientX, e.clientY); if (rec) select(rec.c); });
   stage.addEventListener('pointercancel', () => down = null);
-  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') return; manualIntent(); scene.scrub((e.deltaY + e.deltaX)*0.00009); }, { passive: false });
+  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') return; manualIntent(); scene.scrub((e.deltaY + e.deltaX)*0.00015); }, { passive: false });
   function manualIntent(){ if (!seq.state.startsWith('MANUAL')) seq.manual(); }
   const QUIET = ['GUIDED_OVERVIEW', 'MANUAL_EXPLORE', 'PAUSED'];
   function select(c){ const rec = scene.byId.get(c.id); if (!rec) return; if (QUIET.includes(seq.state)) scene.saveViewpoint(); seq.select(c); }
@@ -139,11 +139,11 @@ window.AC = window.AC || {};
   ui.resume.addEventListener('click', () => { scene.resetUser(); seq.resume(); });
   ui.guided.addEventListener('click', () => { scene.resetUser(); seq.resume(); });
   ui.pause.addEventListener('click', () => seq.pause());
-  ui.explore.addEventListener('click', () => { if (seq.state === 'MANUAL_FOCUS') seq.close(); else seq.manual(); note('Scroll to move the stream, drag to look around, select a portrait to read.'); });
+  ui.explore.addEventListener('click', () => { if (seq.state === 'MANUAL_FOCUS') seq.close(); else seq.manual(); note('Scroll to move along the ribbon, select a portrait to read.'); });
   ui.full.addEventListener('click', () => { const el = document.documentElement; const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) f.call(el).catch(() => note('Full screen is not available here.')); });
   ui.motion.addEventListener('click', () => { reduced = !reduced; ui.motion.setAttribute('aria-pressed', String(reduced)); ui.motion.textContent = reduced ? 'Motion off' : 'Motion on'; document.documentElement.classList.toggle('reduced', reduced); });
   if (reduced){ ui.motion.setAttribute('aria-pressed', 'true'); ui.motion.textContent = 'Motion off'; document.documentElement.classList.add('reduced'); }
-  document.addEventListener('keydown', e => { if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input') && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ manualIntent(); scene.scrub(e.key === 'ArrowRight' ? 0.012 : -0.012); } if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
+  document.addEventListener('keydown', e => { if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input') && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ manualIntent(); scene.scrub(e.key === 'ArrowRight' ? 0.02 : -0.02); } if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
 
   // ---- search ----
   function openSearch(){ ui.search.hidden = false; ui.sInput.value = ''; renderResults(''); ui.sInput.focus(); }
