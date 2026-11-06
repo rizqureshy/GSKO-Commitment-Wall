@@ -17,4 +17,8 @@ writeFileSync(join(root, 'dist', 'index.html'), out);
 // Artifact variant: claude.ai wraps pages in its own skeleton, so strip ours.
 const art = out.replace(/^[\s\S]*?<head>\s*<meta charset="utf-8">\s*<meta name="viewport"[^>]*>\s*/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '');
 writeFileSync(join(root, 'dist', 'artifact.html'), art);
+// GitHub Pages: the same single-file build is published from /docs at the repository root.
+mkdirSync(join(root, '..', 'docs'), { recursive: true });
+writeFileSync(join(root, '..', 'docs', 'index.html'), out);
+writeFileSync(join(root, '..', 'docs', '.nojekyll'), '');
 console.log('dist/index.html', (out.length/1024).toFixed(0) + ' KB,', focus.length, 'portraits embedded');

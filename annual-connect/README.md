@@ -12,7 +12,11 @@ npx serve .          # or python3 -m http.server
 ```
 
 `node tools/build.mjs` writes `dist/index.html`, a single self-contained file with the demo portrait pool
-embedded. Either the folder or `dist/` can be deployed to Cloudflare Pages as a static site.
+embedded, and copies it to `/docs/index.html` at the repository root for GitHub Pages. Either the folder,
+`dist/`, or `/docs` can be deployed to Cloudflare Pages or GitHub Pages as a static site.
+
+GitHub Pages: Settings → Pages → Source "Deploy from a branch" → branch `main`, folder `/docs`.
+The page is then at `https://<owner>.github.io/<repository>/` and accepts the URL parameters below.
 
 ### URL parameters
 
