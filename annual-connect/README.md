@@ -81,11 +81,10 @@ none of them add particles or decoration.
   Travelling light.
 - **The crowd makes way.** When a promise is featured, the prints around it move aside so the chosen portrait
   has room, and close again on exit. Occlusion fading is kept for anything strictly in front.
-- **Time is position.** The collection is ordered by submission time along the stream: the newest at the
-  readable front, older behind it toward the horizon. A readout under the count names when the people now
-  passing the front made their commitment, and changes as you scroll. New arrivals enter at the front.
-  Theme neighbourhoods are no longer contiguous as a consequence; shared intentions still connect the nearest
-  people on the same theme.
+- **The stage.** A featured promise no longer stops the stream or moves the camera. The chosen print lifts out
+  of the flow onto a stage in front of the camera, right of centre (upper half on a phone), while the text
+  takes the title's place on the left and the stream keeps flowing behind, quieter. Closing lowers the print
+  back into its slot, wherever the stream has carried it. Shared intentions still frame the group in place.
 - **The closing.** Shift+C, `?closing=1`, or the development control. The stream stops, every print lights in
   turn from the horizon to the front over nine seconds and stays faintly lit, and the title becomes
   "Our commitments. Made." Resume guided view ends it.

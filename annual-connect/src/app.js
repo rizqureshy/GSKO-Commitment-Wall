@@ -61,7 +61,7 @@ window.AC = window.AC || {};
     },
     onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(undefined, seq.state.startsWith('GUIDED')); }
   });
-  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); scene.stream(s.state === 'GUIDED_OVERVIEW' && !scene.closingOn ? 1 : 0); });
+  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); const flowing = (s.state === 'GUIDED_OVERVIEW' || s.state === 'GUIDED_FOCUS' || s.state === 'GUIDED_ARRIVAL') && !scene.closingOn; scene.stream(flowing ? 1 : 0); });
 
   function renderStatus(s){
     const st = s.state; const guided = st.startsWith('GUIDED'); const manual = st.startsWith('MANUAL');
@@ -118,16 +118,7 @@ window.AC = window.AC || {};
       el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && P.halfH > 110); el.hidden = false; used++; }
     for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
   }
-  // Time is position: the readout names when the people now passing the front made their commitment.
-  const nowEl = $('#now'); let nowTick = 0;
-  function timeReadout(now){
-    if (now - nowTick < 600) return; nowTick = now;
-    const front = scene.items.filter(r => !r.pending && r.alpha > 0.5 && r.home.t > 0.7 && r.home.t < 0.86);
-    if (front.length < 3 || scene.closingOn){ nowEl.hidden = true; return; }
-    const ts = front.map(r => r.c.submittedAt).sort((a, b) => a - b); const med = ts[Math.floor(ts.length/2)];
-    nowEl.textContent = 'Passing now · joined ' + new Date(med).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); nowEl.hidden = false;
-  }
-  scene.onFrame = now => { placeLabels(); timeReadout(now); };
+  scene.onFrame = () => { placeLabels(); };
 
   // ---- selection, hover, orbit ----
   let down = null, dragged = false;

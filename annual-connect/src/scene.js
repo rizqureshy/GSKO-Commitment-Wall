@@ -105,6 +105,8 @@ window.AC = window.AC || {};
     let pulseP = -1, pulseOn = false, lastPulse = 0;
     let partK = 0;
     let closing = null;         // { t0 }
+    let lifted = null;          // the print pulled out of the stream onto the stage
+    const camR = new T.Vector3(), camUp = new T.Vector3(), camF = new T.Vector3(), stagePos = new T.Vector3();
 
     // horizon: a planet limb far behind the string, with a thin warm rim of light
     {
@@ -138,7 +140,7 @@ window.AC = window.AC || {};
       const home = AC.layout.homeFor(c, items.length, total || items.length + 1);
       const i = items.length;
       if (animateIn) home.phase = ((0.70 - streamPos) % 1 + 1) % 1;   // a newcomer enters at the front, where the newest belong
-      const rec = { c, home, i, x: home.x, y: home.y, z: home.z, s: animateIn ? 0.001 : 1, hl: 0, hlT: 0, alpha: 1, alphaT: 1, zoff: animateIn ? 7 : 0, bornAt: performance.now(), animateIn: !!animateIn, hover: 0 };
+      const rec = { c, home, i, x: home.x, y: home.y, z: home.z, s: animateIn ? 0.001 : 1, hl: 0, hlT: 0, alpha: 1, alphaT: 1, zoff: animateIn ? 7 : 0, bornAt: performance.now(), animateIn: !!animateIn, hover: 0, lift: 0, liftT: 0 };
       items.push(rec); byId.set(c.id, rec);
       const rng = AC.data.mulberry32(AC.data.hashStr(c.id + ':tone'));
       if (c.portrait && poolSize > 0){ const p = c.portrait.pool % poolSize; const col = p % 4, row = Math.floor(p/4); aRect.set([col/4, 1 - (row + 1)/3, 1/4, 1/3], i*4); aAtlas[i] = 0; aFlip[i] = rng() > 0.5 ? 1 : 0; }
@@ -270,7 +272,13 @@ window.AC = window.AC || {};
       for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
         const dx = quiet ? 0 : Math.sin(t*h.drift.ax + h.drift.px)*h.drift.sx, dy = quiet ? 0 : Math.sin(t*h.drift.ay + h.drift.py)*h.drift.sy;
         AC.layout.place(h, ((h.phase + streamPos) % 1 + 1) % 1, PL); h.scale = PL.scale; h.t = PL.t; r.x = PL.x + dx; r.y = PL.y + dy; r.z = PL.z; }
-      const feats = []; if (partK > 0.01) for (const id of featuredIds){ const f = byId.get(id); if (f) feats.push(f); }
+      // the stage: a spot in front of the camera, right of centre on a wide screen, upper half on a phone
+      { const e = camera.matrixWorld.elements; camR.set(e[0], e[1], e[2]).normalize(); camUp.set(e[4], e[5], e[6]).normalize(); camF.set(-e[8], -e[9], -e[10]).normalize(); }
+      const narrowV = camera.aspect < 0.9, tanH = Math.tan(camera.fov*Math.PI/360), SD = 9.5;
+      const sx = narrowV ? 0 : 0.40, sy = narrowV ? 0.30 : -0.03, sFrac = narrowV ? 0.34 : 0.62;
+      stagePos.copy(camPos).addScaledVector(camF, SD).addScaledVector(camR, sx*SD*tanH*camera.aspect).addScaledVector(camUp, sy*SD*tanH);
+      const stageSc = (2*SD*tanH*sFrac)/BASE;
+      const feats = []; if (partK > 0.01 && !lifted) for (const id of featuredIds){ const f = byId.get(id); if (f) feats.push(f); }
       for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
         if (feats.length && r.hlT < 0.5){ for (const f of feats){ let ox = r.x - f.x, oy = r.y - f.y; const d = Math.hypot(ox, oy) || 0.001; const R = 2.4 + BASE*f.home.scale*focusScale(f)*1.15; if (d < R && Math.abs(r.z - f.z) < 9){ const push = (R - d)*partK; r.x += ox/d*push; r.y += oy/d*push; } } }
         let light = 0;
@@ -281,13 +289,20 @@ window.AC = window.AC || {};
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
         let aT = 1;
-        if (occA && r.hlT < 0.5){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.4 + BASE*(h.scale*0.7 + f.home.scale*1.7); if (perp < rad){ aT = Math.min(aT, perp < rad*0.55 ? 0 : 0.08 + 0.3*(perp/rad)); } } } }
-        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (dc < 13) aT = 0; else if (dc < 20) aT = Math.min(aT, 0.1 + 0.3*(dc - 13)/7); }
-        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ tmpV.set(r.x, r.y, r.z).project(camera); if (camera.aspect < 0.9 ? tmpV.y < 0.05 : tmpV.x > 0.0) aT = Math.min(aT, 0.1); }
+        if (occA && r.hlT < 0.5 && !lifted){ for (const id of featuredIds){ const f = byId.get(id); if (!f) continue; tmpV.set(f.x, f.y, f.z).sub(occA); const L = tmpV.length(); tmpV.multiplyScalar(1/L); tmpU.set(r.x, r.y, r.z).sub(occA); const along = tmpU.dot(tmpV); if (along > 0 && along < L - 0.5){ const perp = tmpU.sub(tmpV.multiplyScalar(along)).length(); const rad = 1.4 + BASE*(h.scale*0.7 + f.home.scale*1.7); if (perp < rad){ aT = Math.min(aT, perp < rad*0.55 ? 0 : 0.08 + 0.3*(perp/rad)); } } } }
+        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ const dc = camPos.distanceTo(tmpU.set(r.x, r.y, r.z + r.zoff)); if (lifted){ if (dc < SD + 2.5) aT = 0; } else { if (dc < 13) aT = 0; else if (dc < 20) aT = Math.min(aT, 0.1 + 0.3*(dc - 13)/7); } }
+        if (featuredIds.size && r.hlT < 0.5 && dim > 0.2){ tmpV.set(r.x, r.y, r.z).project(camera);
+          if (lifted){ const behindText = narrowV ? tmpV.y < -0.1 : tmpV.x < -0.02; const behindStage = narrowV ? Math.abs(tmpV.y - sy) < 0.45 : (Math.abs(tmpV.x - sx) < 0.3 && Math.abs(tmpV.y - sy) < 0.75); aT = Math.min(aT, behindText ? 0.2 : behindStage ? 0.28 : 0.62); }
+          else if (camera.aspect < 0.9 ? tmpV.y < 0.05 : tmpV.x > 0.0) aT = Math.min(aT, 0.1); }
         if (!r.c.eligible || r.pending) aT = 0;
         r.alphaT = aT; r.alpha += (r.alphaT - r.alpha)*(1 - Math.pow(0.03, dt));
-        const sc = r.s*h.scale*(1 + r.hl*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
-        dummy.position.set(r.x, r.y, r.z + r.zoff + r.hl*0.6); dummy.quaternion.copy(camera.quaternion); dummy.scale.set(BASE*h.aspect*sc, BASE*sc, 1); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
+        r.lift += (r.liftT - r.lift)*(1 - Math.pow(0.012, dt)); if (r.lift < 0.001 && r.liftT === 0) r.lift = 0;
+        const liftK = r.lift > 0 ? easeInOut(clamp(r.lift, 0, 1)) : 0;
+        const hlK = r.hl*(1 - liftK);
+        let sc = r.s*h.scale*(1 + hlK*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
+        dummy.position.set(r.x, r.y, r.z + r.zoff + hlK*0.6);
+        if (liftK > 0){ dummy.position.lerp(stagePos, liftK); sc = sc*(1 - liftK) + stageSc*liftK; }
+        dummy.quaternion.copy(camera.quaternion); dummy.scale.set(BASE*h.aspect*sc, BASE*sc, 1); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
         aState[i*4] = r.hl; aState[i*4 + 1] = light; aState[i*4 + 2] = r.alpha; aState[i*4 + 3] = vis;
       }
       mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
@@ -316,8 +331,10 @@ window.AC = window.AC || {};
       /* Scrub the thread by hand: positive moves it forward (toward the viewer), negative back toward the horizon. */
       scrub(d){ if (streamTarget == null) streamTarget = streamPos; streamTarget = Math.max(streamPos - 0.2, Math.min(streamPos + 0.2, streamTarget + d)); },
       get streamPos(){ return streamPos; },
-      focus(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'focus', dur == null ? 2000 : dur); dimTo(1); },
-      arrival(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.x, rec.y, rec.z - 0.05); ripple.visible = true; rippleT = 0; },
+      /* Focus lifts the chosen print out of the stream onto the stage; the stream keeps flowing behind it. */
+      focus(rec){ if (lifted && lifted !== rec) lifted.liftT = 0; setFeatured([rec.c.id]); lifted = rec; rec.liftT = 1; dimTo(0.55); },
+      arrival(rec){ if (lifted && lifted !== rec) lifted.liftT = 0; setFeatured([rec.c.id]); lifted = rec; rec.liftT = 1; dimTo(0.5); ripple.position.set(rec.x, rec.y, rec.z - 0.05); ripple.visible = true; rippleT = 0; },
+      get lifted(){ return lifted; },
       group(recs, dur){ holdCamera(); streamSpeedT = 0; setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
       pulse(ids){ ids.forEach(id => { const r = byId.get(id); if (r){ r.hl = 0.5; } }); },
       /* Dawn: the horizon brightens, then the prints come up along the stream from the horizon to the front. */
@@ -328,7 +345,7 @@ window.AC = window.AC || {};
       /* The closing: the stream stops and every print lights in turn from the horizon to the front, then holds lit. */
       closing(on){ if (on){ closing = { t0: performance.now() }; streamSpeedT = 0; } else { closing = null; } },
       get closingOn(){ return !!closing; },
-      release(){ clearFeatured(); clearArcs(); dimTo(0); streamSpeedT = 1; },
+      release(){ clearFeatured(); clearArcs(); dimTo(0); streamSpeedT = 1; if (lifted){ lifted.liftT = 0; lifted = null; } },
       pick, project,
       setHover(rec){ if (hoverRec && hoverRec !== rec) hoverRec.hover = 0; hoverRec = rec; if (rec) rec.hover = 1; },
       orbitBy(dAz, dEl){ user.azT = clamp(user.azT + dAz, -0.55, 0.55); user.elT = clamp(user.elT + dEl, -0.22, 0.3); },

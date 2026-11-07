@@ -28,13 +28,11 @@ window.AC = window.AC || {};
   // A gentle crest through the middle so the upper edge lifts a little, as in the reference.
   function lift(t){ return 1.6*Math.sin(Math.PI*Math.min(1, t*0.95))*smooth(0.15, 0.45, t); }
 
-  // The collection arrives sorted by submission time. The newest sits at the readable front; going back along the
-  // stream toward the horizon is going back in time. Time is position.
-  const FRONT = 0.78;
-  function homeFor(contribution, index, total){
+  function homeFor(contribution){
     const rng = mulberry32(hashStr(contribution.id));
-    const n = Math.max(1, total || 1), i = index == null ? Math.floor(rng()*n) : index;
-    const phase = ((FRONT - (n - 1 - i)/n*0.985 + (rng() - 0.5)*0.35/n) % 1 + 1) % 1;
+    const theme = contribution.themeIds[0];
+    const st = STRETCH[theme] || [0, 1];
+    const phase = (st[0] + (st[1] - st[0])*rng() + (rng() - 0.5)*0.1 + 1) % 1;
     const hasPhoto = !!contribution.portrait;
     const halo = rng() < 0.06;
     const fore = !halo && hasPhoto && rng() < 0.16;              // nearest layer when it passes the viewer
@@ -74,5 +72,5 @@ window.AC = window.AC || {};
   // Horizon: a planet limb far behind the stream, low and to the left. The stream rises from just above its edge.
   const HORIZON = { center: { x: -118, y: -186, z: -150 }, radius: 176 };
 
-  AC.layout = { homeFor, place, spine, cameraAt, ORDER, HORIZON, FRONT, STREAM_PERIOD: 150 };
+  AC.layout = { homeFor, place, spine, cameraAt, ORDER, HORIZON, STREAM_PERIOD: 150 };
 })(window.AC);
