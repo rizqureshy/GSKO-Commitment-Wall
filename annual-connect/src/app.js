@@ -10,6 +10,7 @@ window.AC = window.AC || {};
   const isTouch = matchMedia('(pointer: coarse)').matches;
   const MODE = params.get('mode') || (isTouch || innerWidth < 900 ? 'explore' : 'guided');
   const DEV = params.get('dev') === '1' && params.get('display') !== '1';
+  const DAWN = params.get('dawn') !== '0';
   const DISPLAY = params.get('display') === '1';
   let reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const stage = $('#stage');
@@ -60,7 +61,7 @@ window.AC = window.AC || {};
     },
     onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(undefined, seq.state.startsWith('GUIDED')); }
   });
-  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); scene.stream(s.state === 'GUIDED_OVERVIEW' ? 1 : 0); });
+  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); scene.stream(s.state === 'GUIDED_OVERVIEW' && !scene.closingOn ? 1 : 0); });
 
   function renderStatus(s){
     const st = s.state; const guided = st.startsWith('GUIDED'); const manual = st.startsWith('MANUAL');
@@ -117,7 +118,16 @@ window.AC = window.AC || {};
       el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && P.halfH > 110); el.hidden = false; used++; }
     for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
   }
-  scene.onFrame = placeLabels;
+  // Time is position: the readout names when the people now passing the front made their commitment.
+  const nowEl = $('#now'); let nowTick = 0;
+  function timeReadout(now){
+    if (now - nowTick < 600) return; nowTick = now;
+    const front = scene.items.filter(r => !r.pending && r.alpha > 0.5 && r.home.t > 0.7 && r.home.t < 0.86);
+    if (front.length < 3 || scene.closingOn){ nowEl.hidden = true; return; }
+    const ts = front.map(r => r.c.submittedAt).sort((a, b) => a - b); const med = ts[Math.floor(ts.length/2)];
+    nowEl.textContent = 'Passing now · joined ' + new Date(med).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); nowEl.hidden = false;
+  }
+  scene.onFrame = now => { placeLabels(); timeReadout(now); };
 
   // ---- selection, hover, orbit ----
   let down = null, dragged = false;
@@ -128,7 +138,7 @@ window.AC = window.AC || {};
   });
   stage.addEventListener('pointerup', e => { if (!down) return; const wasDrag = dragged; down = null; if (wasDrag) return; if (e.target.closest('button, a, input, .panel, dialog')) return; const rec = scene.pick(e.clientX, e.clientY); if (rec) select(rec.c); });
   stage.addEventListener('pointercancel', () => down = null);
-  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') return; manualIntent(); scene.scrub((e.deltaY + e.deltaX)*0.00015); }, { passive: false });
+  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); if (scene.closingOn || scene.dawning) return; if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') return; manualIntent(); scene.scrub((e.deltaY + e.deltaX)*0.00015); }, { passive: false });
   function manualIntent(){ if (!seq.state.startsWith('MANUAL')) seq.manual(); }
   const QUIET = ['GUIDED_OVERVIEW', 'MANUAL_EXPLORE', 'PAUSED'];
   function select(c){ const rec = scene.byId.get(c.id); if (!rec) return; if (QUIET.includes(seq.state)) scene.saveViewpoint(); seq.select(c); }
@@ -162,11 +172,32 @@ window.AC = window.AC || {};
     ui.lRows.innerHTML = ''; $('#l-count').textContent = rows.length + ' of ' + adapter.list().length;
     rows.slice(0, 400).forEach(c => { const li = document.createElement('li'); const b = document.createElement('button'); b.type = 'button'; b.innerHTML = '<b></b><em></em><span></span>'; b.children[0].textContent = c.displayName; b.children[1].textContent = themeLabel(c.themeIds[0]); b.children[2].textContent = c.commitment; b.addEventListener('click', () => { ui.listDlg.close(); select(c); }); li.appendChild(b); ui.lRows.appendChild(li); }); }
 
+  // ---- the closing ----
+  const titleEl = ui.title; const TITLE_OPEN = titleEl.innerHTML;
+  let closingTimer = 0;
+  function startClosing(){
+    if (scene.closingOn) return;
+    seq.pause(); hideFocus(); hideTheme(); scene.release(); scene.hold(); scene.closing(true);
+    titleEl.classList.add('away'); cap.hidden = true;
+    clearTimeout(closingTimer);
+    closingTimer = setTimeout(() => { titleEl.innerHTML = '<span>Our commitments.</span><span>Made.</span>'; titleEl.classList.add('made'); titleEl.classList.remove('away'); }, reduced ? 200 : 9500);
+    note('The closing. Press Resume guided view to continue.');
+  }
+  function endClosing(){ clearTimeout(closingTimer); scene.closing(false); titleEl.innerHTML = TITLE_OPEN; titleEl.classList.remove('made'); }
+  const cap = $('#labels');
+  ui.resume.addEventListener('click', () => { if (scene.closingOn){ endClosing(); cap.hidden = false; } });
+  ui.guided.addEventListener('click', () => { if (scene.closingOn){ endClosing(); cap.hidden = false; } });
+  document.addEventListener('keydown', e => { if (e.shiftKey && e.key.toLowerCase() === 'c' && !e.target.closest('input')) startClosing(); });
+  if (params.get('closing') === '1') setTimeout(startClosing, 6000);
+
   // ---- dev controls (never in audience display mode) ----
   if (DEV){ ui.dev.hidden = false; }
   if (!DISPLAY){
     $('#d-arrive').addEventListener('click', () => adapter.simulateArrival());
     $('#d-surge').addEventListener('click', () => { let k = 0; const go = () => { adapter.simulateArrival(); if (++k < 5) setTimeout(go, 400); }; go(); });
+    $('#d-dawn').addEventListener('click', () => runDawn(true));
+    $('#d-light').addEventListener('click', () => scene.travel());
+    $('#d-close').addEventListener('click', startClosing);
     $('#d-theme').addEventListener('click', () => { const pool = scene.items.filter(r => !r.pending).map(r => r.c); if (!pool.length) return; const c = pool[Math.floor(Math.random()*pool.length)]; const rel = related(c, 3); if (!rel.length) return note('No related commitments for that theme yet.'); if (QUIET.includes(seq.state)) scene.saveViewpoint(); seq.exploreTheme(c, rel); });
     ui.dev.querySelectorAll('[data-n]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const p = new URLSearchParams(location.search); p.set('n', a.dataset.n); p.set('dev', '1'); location.search = p.toString(); }));
     $('#d-fps').textContent = '';
@@ -175,9 +206,19 @@ window.AC = window.AC || {};
 
   // ---- start ----
   $('#mode').textContent = MODE === 'guided' ? 'Guided display' : 'Personal exploration';
-  seq.start();
-  if (MODE !== 'guided') seq.manual();
+  // ---- dawn ----
+  const chrome = $('.chrome');
+  function runDawn(replay){
+    const long = MODE === 'guided'; const ms = reduced ? 0 : (long ? 18000 : 7000);
+    if (!replay){ seq.pause(); }
+    if (ms){ scene.dawn(ms); titleEl.classList.add('away'); chrome.classList.add('dawn'); cap.hidden = true;
+      setTimeout(() => { titleEl.classList.remove('away'); }, ms*0.8);
+      setTimeout(() => { chrome.classList.remove('dawn'); cap.hidden = false; }, ms*0.9); }
+    if (!replay) setTimeout(() => { if (MODE === 'guided') seq.start(); else seq.manual(); }, ms ? ms*0.92 : 0);
+  }
   renderStatus({ state: seq.state, queued: 0 });
+  seq.start();
+  if (DAWN && scene.count) runDawn(false); else if (MODE !== 'guided') seq.manual();
   // hide the opening veil once the first frames are in
   setTimeout(() => $('#veil').classList.add('off'), 600);
   AC.app = { adapter, scene, seq, select };

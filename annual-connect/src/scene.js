@@ -8,8 +8,8 @@ window.AC = window.AC || {};
   const T = window.THREE;
 
   const VERT = `
-    attribute vec4 aRect; attribute float aAtlas; attribute float aFlip; attribute vec2 aTone; attribute vec3 aState;
-    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec3 vState; varying float vZ;
+    attribute vec4 aRect; attribute float aAtlas; attribute float aFlip; attribute vec2 aTone; attribute vec4 aState;
+    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec4 vState; varying float vZ;
     void main(){
       vUv = vec2(aFlip > 0.5 ? 1.0 - uv.x : uv.x, uv.y); vRect = aRect; vAtlas = aAtlas; vTone = aTone; vState = aState;
       vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
@@ -18,11 +18,11 @@ window.AC = window.AC || {};
   const FRAG = `
     precision highp float;
     uniform sampler2D uPhotos; uniform sampler2D uInitials; uniform float uPhotoOK; uniform float uDim; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFog; uniform float uTime;
-    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec3 vState; varying float vZ;
+    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec4 vState; varying float vZ;
     vec3 samp(vec2 local, float usePhoto){ vec2 uv = vRect.xy + clamp(local, 0.0, 1.0)*vRect.zw; return mix(texture2D(uInitials, uv).rgb, texture2D(uPhotos, uv).rgb, usePhoto); }
     void main(){
-      float alpha = vState.z;
-      if (alpha < 0.03) discard;
+      float alpha = vState.z; float vis = vState.w; float light = vState.y;
+      if (alpha*vis < 0.03) discard;
       float usePhoto = (vAtlas < 0.5 && uPhotoOK > 0.5) ? 1.0 : 0.0;
       float keep = clamp(vState.x, 0.0, 1.0);
       // the nearest prints fall out of focus, like the foreground of a photograph; a featured print never does
@@ -45,7 +45,12 @@ window.AC = window.AC || {};
       c *= mix(1.0 - 0.8*uDim, 1.12, keep);
       // highlight: a faint warm lift
       c += keep*vec3(0.06, 0.05, 0.03);
+      // travelling light and the closing: a warm lift with a little more contrast, strongest where the air is clear
+      c = mix(c, (c - 0.5)*1.18 + 0.5, clamp(light, 0.0, 1.0)*0.5);
+      c += light*vec3(0.20, 0.185, 0.16)*(1.0 - f*0.6);
       c *= mix(0.3, 1.0, alpha);
+      // dawn: prints come up out of the dark, horizon first
+      c *= vis;
       gl_FragColor = vec4(c, 1.0);
     }`;
 
@@ -84,26 +89,34 @@ window.AC = window.AC || {};
 
     // ---- instanced portraits ----
     const geo = new T.PlaneGeometry(1, 1);
-    const aRect = new Float32Array(MAXN*4), aAtlas = new Float32Array(MAXN), aFlip = new Float32Array(MAXN), aTone = new Float32Array(MAXN*2), aState = new Float32Array(MAXN*3);
+    const aRect = new Float32Array(MAXN*4), aAtlas = new Float32Array(MAXN), aFlip = new Float32Array(MAXN), aTone = new Float32Array(MAXN*2), aState = new Float32Array(MAXN*4);
     geo.setAttribute('aRect', new T.InstancedBufferAttribute(aRect, 4));
     geo.setAttribute('aAtlas', new T.InstancedBufferAttribute(aAtlas, 1));
     geo.setAttribute('aFlip', new T.InstancedBufferAttribute(aFlip, 1));
     geo.setAttribute('aTone', new T.InstancedBufferAttribute(aTone, 2));
-    const stateAttr = new T.InstancedBufferAttribute(aState, 3).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
+    const stateAttr = new T.InstancedBufferAttribute(aState, 4).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
     const mat = new T.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: {
       uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 30 }, uFogFar: { value: 98 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
+    let rimU = null;
+    const ss = (a, b, x) => { const k = clamp((x - a)/(b - a), 0, 1); return k*k*(3 - 2*k); };
+    // choreography state: dawn, the travelling light, the crowd making way, the closing
+    let dawn = null;            // { t0, dur }
+    let pulseP = -1, pulseOn = false, lastPulse = 0;
+    let partK = 0;
+    let closing = null;         // { t0 }
 
     // horizon: a planet limb far behind the string, with a thin warm rim of light
     {
       const H = AC.layout.HORIZON;
       const limbVert = `varying vec3 vN, vV, vW; void main(){ vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix*vec4(position,1.0)).xyz; gl_Position = projectionMatrix*mv; }`;
-      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim };
+      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim, uRim: { value: 1 } };
+      rimU = limbU.uRim;
       const body = new T.Mesh(new T.SphereGeometry(H.radius, 96, 64), new T.ShaderMaterial({ uniforms: limbU, vertexShader: limbVert,
-        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = 1.0 - 0.75*uDim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim, uRim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = (1.0 - 0.75*uDim)*uRim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
       body.position.set(H.center.x, H.center.y, H.center.z); scene.add(body);
       const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.04, 96, 64), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: limbU, vertexShader: limbVert,
-        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim); gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
+        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim, uRim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim)*uRim; gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
       glow.position.copy(body.position); scene.add(glow);
       // two faint lines of flow following the string, as in the reference
       const flowMat = new T.LineBasicMaterial({ color: 0xCFC5B4, transparent: true, opacity: 0.085 });
@@ -124,14 +137,14 @@ window.AC = window.AC || {};
       if (items.length >= MAXN) return null;
       const home = AC.layout.homeFor(c, items.length, total || items.length + 1);
       const i = items.length;
-      if (animateIn) home.phase = ((0.62 - streamPos) % 1 + 1) % 1;   // a newcomer enters where the stream is readable
+      if (animateIn) home.phase = ((0.70 - streamPos) % 1 + 1) % 1;   // a newcomer enters at the front, where the newest belong
       const rec = { c, home, i, x: home.x, y: home.y, z: home.z, s: animateIn ? 0.001 : 1, hl: 0, hlT: 0, alpha: 1, alphaT: 1, zoff: animateIn ? 7 : 0, bornAt: performance.now(), animateIn: !!animateIn, hover: 0 };
       items.push(rec); byId.set(c.id, rec);
       const rng = AC.data.mulberry32(AC.data.hashStr(c.id + ':tone'));
       if (c.portrait && poolSize > 0){ const p = c.portrait.pool % poolSize; const col = p % 4, row = Math.floor(p/4); aRect.set([col/4, 1 - (row + 1)/3, 1/4, 1/3], i*4); aAtlas[i] = 0; aFlip[i] = rng() > 0.5 ? 1 : 0; }
       else { const cell = initCount++ % (ICOLS*IROWS); drawInitials(cell, c.displayName); const col = cell % ICOLS, row = Math.floor(cell/ICOLS); aRect.set([col/ICOLS, 1 - (row + 1)/IROWS, 1/ICOLS, 1/IROWS], i*4); aAtlas[i] = 1; aFlip[i] = 0; }
       aTone[i*2] = 0.86 + rng()*0.26; aTone[i*2 + 1] = 0.92 + rng()*0.2;
-      aState.set([0, 0, 1], i*3);
+      aState.set([0, 0, 1, 1], i*4);
       mesh.count = items.length; geo.attributes.aRect.needsUpdate = true; geo.attributes.aAtlas.needsUpdate = true; geo.attributes.aFlip.needsUpdate = true; geo.attributes.aTone.needsUpdate = true;
       return rec;
     }
@@ -193,7 +206,7 @@ window.AC = window.AC || {};
       clearArcs();
       for (let i = 0; i < recs.length; i++) for (let j = i + 1; j < recs.length; j++){
         const a = new T.Vector3(recs[i].x, recs[i].y, recs[i].z), b = new T.Vector3(recs[j].x, recs[j].y, recs[j].z);
-        if (a.distanceTo(b) > 30) continue;
+        if (a.distanceTo(b) > 48) continue;
         const mid = a.clone().lerp(b, 0.5).add(new T.Vector3(0, a.distanceTo(b)*0.12, 1.2));
         const pts = new T.QuadraticBezierCurve3(a, mid, b).getPoints(40);
         arcs.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), arcMat));
@@ -242,11 +255,28 @@ window.AC = window.AC || {};
       streamSpeed += (streamSpeedT - streamSpeed)*(1 - Math.pow(0.03, dt));
       if (streamTarget != null){ const diff = streamTarget - streamPos; streamPos += diff*(1 - Math.pow(0.0008, dt)); if (Math.abs(diff) < 0.00004){ streamPos = streamTarget; streamTarget = null; } }
       else if (!quiet) streamPos += dt/AC.layout.STREAM_PERIOD*streamSpeed;
-      // instances
+      // choreography
+      let dawnFront = 2, rim = 1;
+      if (dawn){ const k = clamp((now - dawn.t0)/dawn.dur, 0, 1); rim = ss(0, 0.4, k); dawnFront = -0.2 + 1.55*ss(0.12, 0.92, k); if (k >= 1) dawn = null; }
+      if (pulseOn){ pulseP += dt/11; if (pulseP > 1.25) pulseOn = false; }
+      else if (!quiet && !closing && !featuredIds.size && now - lastPulse > 52000){ lastPulse = now; pulseOn = true; pulseP = -0.2; }
+      const flare = pulseOn ? Math.max(0, 1 - (pulseP + 0.2)/0.3) : 0;
+      if (rimU) rimU.value = rim*(1 + 0.6*flare);
+      let closeP = -1, closeHold = 0;
+      if (closing){ const k = (now - closing.t0)/1000; closeP = -0.1 + 1.25*clamp(k/9, 0, 1); closeHold = ss(9, 11, k)*0.3; }
+      partK += (((featuredIds.size && dim > 0.1) ? 1 : 0) - partK)*(1 - Math.pow(0.02, dt));
+      // instances: positions first, so the crowd can make way around the featured prints
       const n = items.length; const camPos = camera.position;
       for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
         const dx = quiet ? 0 : Math.sin(t*h.drift.ax + h.drift.px)*h.drift.sx, dy = quiet ? 0 : Math.sin(t*h.drift.ay + h.drift.py)*h.drift.sy;
-        AC.layout.place(h, ((h.phase + streamPos) % 1 + 1) % 1, PL); h.scale = PL.scale; h.t = PL.t; r.x = PL.x + dx; r.y = PL.y + dy; r.z = PL.z;
+        AC.layout.place(h, ((h.phase + streamPos) % 1 + 1) % 1, PL); h.scale = PL.scale; h.t = PL.t; r.x = PL.x + dx; r.y = PL.y + dy; r.z = PL.z; }
+      const feats = []; if (partK > 0.01) for (const id of featuredIds){ const f = byId.get(id); if (f) feats.push(f); }
+      for (let i = 0; i < n; i++){ const r = items[i]; const h = r.home;
+        if (feats.length && r.hlT < 0.5){ for (const f of feats){ let ox = r.x - f.x, oy = r.y - f.y; const d = Math.hypot(ox, oy) || 0.001; const R = 2.4 + BASE*f.home.scale*focusScale(f)*1.15; if (d < R && Math.abs(r.z - f.z) < 9){ const push = (R - d)*partK; r.x += ox/d*push; r.y += oy/d*push; } } }
+        let light = 0;
+        if (pulseOn) light = Math.exp(-Math.pow((h.t - pulseP)/0.08, 2))*1.1;
+        if (closing){ const sweep = Math.exp(-Math.pow((h.t - closeP)/0.045, 2))*1.1; light = Math.max(light, sweep, h.t < closeP ? closeHold : 0); }
+        const vis = dawn ? 1 - ss(dawnFront - 0.42, dawnFront, h.t) : 1;
         if (r.animateIn){ const k = clamp((now - r.bornAt)/2600, 0, 1); const e = easeOut(k); r.s = 0.001 + e*0.999; r.zoff = 7*(1 - e); if (k >= 1) r.animateIn = false; }
         r.hl += (r.hlT - r.hl)*(1 - Math.pow(0.02, dt));
         // occlusion: fade prints that sit between the camera and any featured print
@@ -258,7 +288,7 @@ window.AC = window.AC || {};
         r.alphaT = aT; r.alpha += (r.alphaT - r.alpha)*(1 - Math.pow(0.03, dt));
         const sc = r.s*h.scale*(1 + r.hl*(focusScale(r) - 1))*(1 + r.hover*0.06)*(0.12 + 0.88*r.alpha);
         dummy.position.set(r.x, r.y, r.z + r.zoff + r.hl*0.6); dummy.quaternion.copy(camera.quaternion); dummy.scale.set(BASE*h.aspect*sc, BASE*sc, 1); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
-        aState[i*3] = r.hl; aState[i*3 + 1] = 0; aState[i*3 + 2] = r.alpha;
+        aState[i*4] = r.hl; aState[i*4 + 1] = light; aState[i*4 + 2] = r.alpha; aState[i*4 + 3] = vis;
       }
       mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
       mat.uniforms.uFogFar.value = n > 600 ? 90 : 98; mat.uniforms.uFogNear.value = n > 600 ? 26 : 30;
@@ -290,6 +320,14 @@ window.AC = window.AC || {};
       arrival(rec, dur){ holdCamera(); streamSpeedT = 0; setFeatured([rec.c.id]); frame([rec], 'arrival', dur == null ? 2000 : dur); dimTo(0.85); ripple.position.set(rec.x, rec.y, rec.z - 0.05); ripple.visible = true; rippleT = 0; },
       group(recs, dur){ holdCamera(); streamSpeedT = 0; setFeatured(recs.map(r => r.c.id)); frame(recs, 'group', dur == null ? 2200 : dur); dimTo(0.75); showArcs(recs); },
       pulse(ids){ ids.forEach(id => { const r = byId.get(id); if (r){ r.hl = 0.5; } }); },
+      /* Dawn: the horizon brightens, then the prints come up along the stream from the horizon to the front. */
+      dawn(ms){ if (rm()){ dawn = null; return; } dawn = { t0: performance.now(), dur: ms || 18000 }; lastPulse = performance.now(); },
+      get dawning(){ return !!dawn; },
+      /* The travelling light: one warm pulse runs the length of the stream. Also fires on its own now and then. */
+      travel(){ pulseOn = true; pulseP = -0.2; lastPulse = performance.now(); },
+      /* The closing: the stream stops and every print lights in turn from the horizon to the front, then holds lit. */
+      closing(on){ if (on){ closing = { t0: performance.now() }; streamSpeedT = 0; } else { closing = null; } },
+      get closingOn(){ return !!closing; },
       release(){ clearFeatured(); clearArcs(); dimTo(0); streamSpeedT = 1; },
       pick, project,
       setHover(rec){ if (hoverRec && hoverRec !== rec) hoverRec.hover = 0; hoverRec = rec; if (rec) rec.hover = 1; },

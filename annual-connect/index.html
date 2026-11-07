@@ -17,6 +17,7 @@
   --silver:#B8B2A8;
   --quiet:rgba(236,230,218,.52);
   --crimson:#C8102E;
+  --ember:#D9B98A;
   --sans:"Outfit","Helvetica Neue",Helvetica,Arial,sans-serif;
   color-scheme:dark;
 }
@@ -53,6 +54,11 @@ p{margin:0}
 .meta button{padding:6px 0;border-bottom:1px solid transparent;color:var(--silver)}
 .meta button:hover{border-bottom-color:var(--silver);color:var(--ivory)}
 #queued{color:var(--crimson)}
+#now{color:var(--quiet);letter-spacing:.1em;text-transform:none;font-variant-numeric:tabular-nums}
+.chrome.dawn .brand,.chrome.dawn .meta,.chrome.dawn nav.bottom,.chrome.dawn .tools{opacity:0;transition:opacity 2.4s ease}
+.chrome .brand,.chrome .meta,.chrome nav.bottom,.chrome .tools{transition:opacity 2.4s ease}
+#title.made span:last-child{color:var(--ember,#D9B98A)}
+#title.made{transition:opacity 3.2s ease,transform 3.2s ease}
 
 #title{text-shadow:0 2px 34px rgba(0,0,0,.75);position:absolute;left:max(28px,env(safe-area-inset-left,0px));top:clamp(70px,13vh,140px);max-width:min(62vw,760px);font-weight:200;font-size:clamp(28px,4.6vw,66px);line-height:1.02;letter-spacing:-.015em;color:var(--ivory);text-wrap:balance;transition:opacity 1.2s ease,transform 1.2s ease;margin:0}
 #title.away{opacity:0;transform:translateY(-10px);pointer-events:none}
@@ -178,7 +184,7 @@ nav.bottom button[aria-pressed="true"]{text-decoration:underline;text-underline-
 
   <div class="chrome">
     <div class="brand"><span>Annual Connect</span><i></i></div>
-    <div class="meta"><span id="mode" class="chip">Guided display</span><span id="queued" hidden></span><span id="status">Guided view</span><span><b id="count">0</b> commitments</span></div>
+    <div class="meta"><span id="mode" class="chip">Guided display</span><span id="queued" hidden></span><span id="status">Guided view</span><span><b id="count">0</b> commitments</span><span id="now" hidden></span></div>
 
     <h1 id="title"><span>Our commitments.</span><span>Our collective future.</span></h1>
 
@@ -216,6 +222,9 @@ nav.bottom button[aria-pressed="true"]{text-decoration:underline;text-underline-
       <button type="button" id="d-arrive">Simulate arrival</button>
       <button type="button" id="d-surge">Simulate surge ×5</button>
       <button type="button" id="d-theme">Show a shared intention</button>
+      <button type="button" id="d-dawn">Replay dawn</button>
+      <button type="button" id="d-light">Travelling light</button>
+      <button type="button" id="d-close">The closing</button>
       <a href="#" data-n="30">30</a><a href="#" data-n="300">300</a><a href="#" data-n="1000">1000</a>
       <span id="d-state"></span><span id="d-fps"></span>
     </div>

@@ -67,6 +67,29 @@ leave it. Selecting a portrait stops the stream and brings that commitment forwa
 exact position. "Resume guided view" restarts the automatic journey. Automatic features are drawn only from
 the readable front of the stream. The camera stays broadly still.
 
+## Choreography (branch `annual-connect-magic`)
+
+Five moments layered on the stream. All of them use one extra per-print light channel and one horizon uniform;
+none of them add particles or decoration.
+
+- **Dawn.** On load the screen is dark except the horizon rim. The rim brightens, the prints come up along the
+  stream from the horizon to the front, and the title and controls arrive last. Eighteen seconds on the guided
+  display, seven in personal exploration, none with reduced motion. `?dawn=0` skips it. The guided sequence
+  starts when dawn ends. Development control: Replay dawn.
+- **The travelling light.** A warm pulse leaves the horizon (which flares a little) and runs the length of the
+  stream in about eleven seconds, once a minute or so while nothing is featured. Development control:
+  Travelling light.
+- **The crowd makes way.** When a promise is featured, the prints around it move aside so the chosen portrait
+  has room, and close again on exit. Occlusion fading is kept for anything strictly in front.
+- **Time is position.** The collection is ordered by submission time along the stream: the newest at the
+  readable front, older behind it toward the horizon. A readout under the count names when the people now
+  passing the front made their commitment, and changes as you scroll. New arrivals enter at the front.
+  Theme neighbourhoods are no longer contiguous as a consequence; shared intentions still connect the nearest
+  people on the same theme.
+- **The closing.** Shift+C, `?closing=1`, or the development control. The stream stops, every print lights in
+  turn from the horizon to the front over nine seconds and stays faintly lit, and the title becomes
+  "Our commitments. Made." Resume guided view ends it.
+
 ## Motion contract (defaults, for tuning)
 
 Overview gap 10–15 s · focus transition 2 s · reading time `max(12, 5 + words/2.5)` s · return 1.8 s ·
