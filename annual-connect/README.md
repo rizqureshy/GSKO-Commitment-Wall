@@ -89,6 +89,20 @@ none of them add particles or decoration.
   turn from the horizon to the front over nine seconds and stays faintly lit, and the title becomes
   "Our commitments. Made." Resume guided view ends it.
 
+## The Earth and colour (branch `annual-connect-earth`)
+
+- **Night Earth.** The horizon is a globe wrapped in NASA night-lights imagery (public domain, via the three.js
+  example textures), turning once every nine minutes, with a sunrise along its left limb. The dawn moment and
+  the travelling light both act on it through the same rim value.
+- **Metros.** Equinix metros appear as brighter, slowly pulsing points among the city lights. Their coordinates
+  are approximate and illustrative until an internal list replaces them (`METROS` in `src/data.js`). Each
+  sample person is assigned a metro; it shows after the theme in the focus panel. When a person is featured,
+  their metro brightens and a hair-thin line rises from it to the lifted portrait, if the metro is on the
+  visible side of the globe.
+- **Colour.** The portrait pool is now colour, graded to one muted treatment. The crowd is rendered monochrome
+  in the shader; a person comes into colour as they lift onto the stage, and returns to monochrome as they
+  rejoin the stream.
+
 ## Motion contract (defaults, for tuning)
 
 Overview gap 10–15 s · focus transition 2 s · reading time `max(12, 5 + words/2.5)` s · return 1.8 s ·

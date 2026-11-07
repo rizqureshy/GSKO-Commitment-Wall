@@ -9,7 +9,8 @@ const scripts = ['data', 'layout', 'sequencer', 'scene', 'app'].map(n => readFil
 const pdir = join(root, 'assets', 'portraits');
 const focus = readdirSync(pdir).filter(f => /^portrait-\d+\.jpg$/.test(f)).sort().map(f => 'data:image/jpeg;base64,' + readFileSync(join(pdir, f)).toString('base64'));
 const atlas = 'data:image/jpeg;base64,' + readFileSync(join(pdir, 'atlas.jpg')).toString('base64');
-const pool = `window.AC = window.AC || {}; AC.PORTRAIT_POOL = { size: ${focus.length}, atlas: ${JSON.stringify(atlas)}, focus: ${JSON.stringify(focus)} };`;
+const earth = 'data:image/jpeg;base64,' + readFileSync(join(root, 'assets', 'earth-lights.jpg')).toString('base64');
+const pool = `window.AC = window.AC || {}; AC.PORTRAIT_POOL = { size: ${focus.length}, atlas: ${JSON.stringify(atlas)}, focus: ${JSON.stringify(focus)}, earth: ${JSON.stringify(earth)} };`;
 const inlined = '<script>\n' + pool + '\n' + scripts.join('\n') + '\n</script>';
 const out = html.replace(/<!-- app-scripts -->[\s\S]*?<!-- \/app-scripts -->/, inlined);
 mkdirSync(join(root, 'dist'), { recursive: true });

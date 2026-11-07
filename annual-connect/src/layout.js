@@ -70,7 +70,7 @@ window.AC = window.AC || {};
   }
 
   // Horizon: a planet limb far behind the stream, low and to the left. The stream rises from just above its edge.
-  const HORIZON = { center: { x: -118, y: -186, z: -150 }, radius: 176 };
+  const HORIZON = { center: { x: -92, y: -142, z: -150 }, radius: 124, tilt: 0.95, roll: -0.25 };
 
   AC.layout = { homeFor, place, spine, cameraAt, ORDER, HORIZON, STREAM_PERIOD: 150 };
 })(window.AC);

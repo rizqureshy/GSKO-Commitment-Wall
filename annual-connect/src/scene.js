@@ -8,17 +8,17 @@ window.AC = window.AC || {};
   const T = window.THREE;
 
   const VERT = `
-    attribute vec4 aRect; attribute float aAtlas; attribute float aFlip; attribute vec2 aTone; attribute vec4 aState;
-    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec4 vState; varying float vZ;
+    attribute vec4 aRect; attribute float aAtlas; attribute float aFlip; attribute vec2 aTone; attribute vec4 aState; attribute float aColor;
+    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec4 vState; varying float vZ; varying float vColor;
     void main(){
-      vUv = vec2(aFlip > 0.5 ? 1.0 - uv.x : uv.x, uv.y); vRect = aRect; vAtlas = aAtlas; vTone = aTone; vState = aState;
+      vUv = vec2(aFlip > 0.5 ? 1.0 - uv.x : uv.x, uv.y); vRect = aRect; vAtlas = aAtlas; vTone = aTone; vState = aState; vColor = aColor;
       vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
       vZ = -mv.z; gl_Position = projectionMatrix * mv;
     }`;
   const FRAG = `
     precision highp float;
     uniform sampler2D uPhotos; uniform sampler2D uInitials; uniform float uPhotoOK; uniform float uDim; uniform float uFogNear; uniform float uFogFar; uniform vec3 uFog; uniform float uTime;
-    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec4 vState; varying float vZ;
+    varying vec2 vUv; varying vec4 vRect; varying float vAtlas; varying vec2 vTone; varying vec4 vState; varying float vZ; varying float vColor;
     vec3 samp(vec2 local, float usePhoto){ vec2 uv = vRect.xy + clamp(local, 0.0, 1.0)*vRect.zw; return mix(texture2D(uInitials, uv).rgb, texture2D(uPhotos, uv).rgb, usePhoto); }
     void main(){
       float alpha = vState.z; float vis = vState.w; float light = vState.y;
@@ -29,6 +29,8 @@ window.AC = window.AC || {};
       float nearB = smoothstep(17.0, 7.0, vZ)*(1.0 - keep);
       vec3 c = samp(vUv, usePhoto);
       if (nearB > 0.01){ vec2 o = vec2(0.028, 0.02)*nearB; c = (c*2.0 + samp(vUv + o, usePhoto) + samp(vUv - o, usePhoto) + samp(vUv + vec2(o.x, -o.y), usePhoto) + samp(vUv - vec2(o.x, -o.y), usePhoto))/6.0; }
+      // the crowd is monochrome; a person comes into colour when they come forward
+      float lum = dot(c, vec3(0.3, 0.59, 0.11)); c = mix(vec3(lum), c, clamp(vColor, 0.0, 1.0));
       // per-print tonal variation so a repeated sample portrait reads as a different print
       c = (c - 0.5)*vTone.y + 0.5; c *= vTone.x;
       // soft inner vignette, like a print under glass
@@ -95,6 +97,7 @@ window.AC = window.AC || {};
     geo.setAttribute('aFlip', new T.InstancedBufferAttribute(aFlip, 1));
     geo.setAttribute('aTone', new T.InstancedBufferAttribute(aTone, 2));
     const stateAttr = new T.InstancedBufferAttribute(aState, 4).setUsage(T.DynamicDrawUsage); geo.setAttribute('aState', stateAttr);
+    const aColor = new Float32Array(MAXN); const colorAttr = new T.InstancedBufferAttribute(aColor, 1).setUsage(T.DynamicDrawUsage); geo.setAttribute('aColor', colorAttr);
     const mat = new T.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms: {
       uPhotos: { value: photoTex }, uInitials: { value: initTex }, uPhotoOK: { value: 0 }, uDim: { value: 0 }, uFogNear: { value: 30 }, uFogFar: { value: 98 }, uFog: { value: new T.Color('#121214') }, uTime: { value: 0 } } });
     const mesh = new T.InstancedMesh(geo, mat, MAXN); mesh.instanceMatrix.setUsage(T.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; scene.add(mesh);
@@ -108,22 +111,42 @@ window.AC = window.AC || {};
     let lifted = null;          // the print pulled out of the stream onto the stage
     const camR = new T.Vector3(), camUp = new T.Vector3(), camF = new T.Vector3(), stagePos = new T.Vector3();
 
-    // horizon: a planet limb far behind the string, with a thin warm rim of light
-    {
-      const H = AC.layout.HORIZON;
-      const limbVert = `varying vec3 vN, vV, vW; void main(){ vN = normalize(normalMatrix*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix*vec4(position,1.0)).xyz; gl_Position = projectionMatrix*mv; }`;
-      const limbU = { uCy: { value: H.center.y }, uCx: { value: H.center.x }, uR: { value: H.radius }, uDim: mat.uniforms.uDim, uRim: { value: 1 } };
-      rimU = limbU.uRim;
-      const body = new T.Mesh(new T.SphereGeometry(H.radius, 96, 64), new T.ShaderMaterial({ uniforms: limbU, vertexShader: limbVert,
-        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim, uRim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.5, uCy + uR*0.99, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float d = (1.0 - 0.75*uDim)*uRim; vec3 c = vec3(0.030, 0.030, 0.035) + vec3(0.02, 0.018, 0.015)*pow(f, 3.0)*top*d; c += vec3(0.98, 0.90, 0.74)*pow(f, 11.0)*1.7*top*west*d; gl_FragColor = vec4(c, 1.0); }` }));
-      body.position.set(H.center.x, H.center.y, H.center.z); scene.add(body);
-      const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.04, 96, 64), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: limbU, vertexShader: limbVert,
-        fragmentShader: `precision highp float; uniform float uCy, uCx, uR, uDim, uRim; varying vec3 vN, vV, vW; void main(){ float f = 1.0 - max(dot(normalize(vN), normalize(vV)), 0.0); float top = smoothstep(uCy + uR*0.45, uCy + uR*1.0, vW.y); float west = smoothstep(uCx + uR*1.1, uCx - uR*0.3, vW.x)*0.75 + 0.25; float a = (pow(f, 6.0)*0.12 + pow(f, 18.0)*0.7)*top*west*(1.0 - 0.75*uDim)*uRim; gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
-      glow.position.copy(body.position); scene.add(glow);
-      // two faint lines of flow following the string, as in the reference
-      const flowMat = new T.LineBasicMaterial({ color: 0xCFC5B4, transparent: true, opacity: 0.085 });
-      [[0.9, 0.6], [-1.3, -0.5]].forEach(([oy, oz], i) => { const pts = []; for (let k = 0; k <= 120; k++){ const t = 0.02 + 0.93*k/120; const s = AC.layout.spine(t); pts.push(new T.Vector3(s.x, s.y + oy*(1 + 1.8*t) + Math.sin(t*9 + i)*0.4*t, s.z + oz*(1 + 2*t))); } scene.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), flowMat)); });
-    }
+    // the Earth at night, below the horizon: a slowly turning globe of city lights with a sunrise on its left limb
+    const H = AC.layout.HORIZON;
+    const earth = new T.Group(); earth.position.set(H.center.x, H.center.y, H.center.z); earth.rotation.set(H.tilt || 0.95, 0, H.roll || -0.25); scene.add(earth);
+    const spinner = new T.Group(); earth.add(spinner);
+    const lightsTex = new T.Texture(); lightsTex.encoding = T.sRGBEncoding; lightsTex.minFilter = T.LinearMipmapLinearFilter; lightsTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const sunDir = new T.Vector3(-0.78, 0.52, 0.35).normalize();
+    const earthU = { uLights: { value: lightsTex }, uHas: { value: 0 }, uRim: { value: 1 }, uDim: mat.uniforms.uDim, uSun: { value: sunDir }, uTime: { value: 0 } };
+    rimU = earthU.uRim;
+    const earthVert = `varying vec2 vUv; varying vec3 vN, vV; void main(){ vUv = uv; vN = normalize(mat3(modelMatrix)*normal); vec4 mv = modelViewMatrix*vec4(position,1.0); vV = normalize(cameraPosition - (modelMatrix*vec4(position,1.0)).xyz); gl_Position = projectionMatrix*mv; }`;
+    const body = new T.Mesh(new T.SphereGeometry(H.radius, 160, 112), new T.ShaderMaterial({ uniforms: earthU, vertexShader: earthVert,
+      fragmentShader: `precision highp float; uniform sampler2D uLights; uniform float uHas, uRim, uDim, uTime; uniform vec3 uSun; varying vec2 vUv; varying vec3 vN, vV;
+        void main(){
+          vec3 n = normalize(vN); float ndl = dot(n, uSun); float f = 1.0 - max(dot(n, normalize(vV)), 0.0);
+          float d = (1.0 - 0.7*uDim)*uRim;
+          vec3 lights = uHas > 0.5 ? texture2D(uLights, vUv).rgb : vec3(0.0);
+          float night = 1.0 - smoothstep(-0.12, 0.12, ndl);
+          vec3 c = vec3(0.012, 0.012, 0.016);
+          c += lights*vec3(1.0, 0.86, 0.62)*0.8*night*d*(0.92 + 0.08*sin(uTime*0.7 + vUv.x*140.0 + vUv.y*90.0));
+          c += vec3(0.03, 0.033, 0.042)*smoothstep(-0.05, 0.35, ndl)*d;
+          float sunrise = pow(f, 7.0)*smoothstep(-0.25, 0.25, ndl);
+          c += vec3(0.98, 0.88, 0.70)*sunrise*1.6*d + vec3(0.6, 0.5, 0.42)*pow(f, 3.0)*0.08*d;
+          gl_FragColor = vec4(c, 1.0); }` }));
+    spinner.add(body);
+    const glow = new T.Mesh(new T.SphereGeometry(H.radius*1.035, 128, 96), new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: earthU, vertexShader: earthVert,
+      fragmentShader: `precision highp float; uniform float uRim, uDim; uniform vec3 uSun; varying vec3 vN, vV; void main(){ vec3 n = normalize(vN); float ndl = dot(n, uSun); float f = 1.0 - max(dot(n, normalize(vV)), 0.0); float a = (pow(f, 6.0)*0.10 + pow(f, 16.0)*0.6)*(0.25 + 0.75*smoothstep(-0.3, 0.3, ndl))*(1.0 - 0.7*uDim)*uRim; gl_FragColor = vec4(vec3(0.95, 0.86, 0.70)*a, a); }` }));
+    earth.add(glow);
+    const METROS = AC.data.METROS; const MN = METROS.length; const mPos = new Float32Array(MN*3), mFeat = new Float32Array(MN), mSeed = new Float32Array(MN);
+    const metroLocal = METROS.map((m, i) => { const phi = (m.lon + 180)*Math.PI/180, th = (90 - m.lat)*Math.PI/180; const R = H.radius*1.004; const v = new T.Vector3(-R*Math.cos(phi)*Math.sin(th), R*Math.cos(th), R*Math.sin(phi)*Math.sin(th)); mPos.set([v.x, v.y, v.z], i*3); mSeed[i] = (i*0.37) % 1; return v; });
+    const mGeo = new T.BufferGeometry(); mGeo.setAttribute('position', new T.BufferAttribute(mPos, 3)); const mFeatAttr = new T.BufferAttribute(mFeat, 1).setUsage(T.DynamicDrawUsage); mGeo.setAttribute('aFeat', mFeatAttr); mGeo.setAttribute('aSeed', new T.BufferAttribute(mSeed, 1));
+    const metros = new T.Points(mGeo, new T.ShaderMaterial({ transparent: true, depthWrite: false, blending: T.AdditiveBlending, uniforms: { uTime: { value: 0 }, uDim: mat.uniforms.uDim, uRim: earthU.uRim },
+      vertexShader: `attribute float aFeat, aSeed; uniform float uTime; varying float vA; varying float vF; void main(){ vec4 mv = modelViewMatrix*vec4(position,1.0); vec3 n = normalize(mat3(modelMatrix)*normalize(position)); vec3 toCam = normalize(cameraPosition - (modelMatrix*vec4(position,1.0)).xyz); float facing = smoothstep(0.02, 0.25, dot(n, toCam)); vF = aFeat; vA = facing*(0.55 + 0.45*sin(uTime*1.3 + aSeed*20.0)); gl_PointSize = (3.0 + 9.0*aFeat)*(1400.0/max(1.0, -mv.z)); gl_Position = projectionMatrix*mv; }`,
+      fragmentShader: `precision highp float; uniform float uDim, uRim; varying float vA; varying float vF; void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; float a = pow(1.0 - d*2.0, 1.6)*vA*(0.55 + vF*1.2)*(1.0 - 0.5*uDim)*uRim; gl_FragColor = vec4(vec3(1.0, 0.92, 0.78)*a, a); }` }));
+    spinner.add(metros);
+    const tieGeo = new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]); const tieMat = new T.LineBasicMaterial({ color: 0xE8DCC4, transparent: true, opacity: 0 }); const tie = new T.Line(tieGeo, tieMat); tie.frustumCulled = false; scene.add(tie);
+    const metroIndex = new Map(METROS.map((m, i) => [m.name, i]));
+    const EARTH_PERIOD = 540; const tmpM = new T.Vector3();
 
     // connection arcs (shared intention)
     const arcMat = new T.LineBasicMaterial({ color: 0xC9BFAE, transparent: true, opacity: 0 });
@@ -303,13 +326,19 @@ window.AC = window.AC || {};
         dummy.position.set(r.x, r.y, r.z + r.zoff + hlK*0.6);
         if (liftK > 0){ dummy.position.lerp(stagePos, liftK); sc = sc*(1 - liftK) + stageSc*liftK; }
         dummy.quaternion.copy(camera.quaternion); dummy.scale.set(BASE*h.aspect*sc, BASE*sc, 1); dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
-        aState[i*4] = r.hl; aState[i*4 + 1] = light; aState[i*4 + 2] = r.alpha; aState[i*4 + 3] = vis;
+        aState[i*4] = r.hl; aState[i*4 + 1] = light; aState[i*4 + 2] = r.alpha; aState[i*4 + 3] = vis; aColor[i] = liftK;
       }
-      mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true;
+      mesh.instanceMatrix.needsUpdate = true; stateAttr.needsUpdate = true; colorAttr.needsUpdate = true;
       mat.uniforms.uFogFar.value = n > 600 ? 90 : 98; mat.uniforms.uFogNear.value = n > 600 ? 26 : 30;
       arcMat.opacity += (arcTarget - arcMat.opacity)*(1 - Math.pow(0.05, dt)); if (arcMat.opacity < 0.01 && arcs.children.length && arcTarget === 0) disposeArcs();
       arcs.visible = arcMat.opacity > 0.01;
       if (ripple.visible){ rippleT += dt; const k = clamp(rippleT/2.2, 0, 1); ripple.scale.setScalar(0.6 + k*4.5); ripple.material.opacity = (1 - k)*0.5; ripple.quaternion.copy(camera.quaternion); if (k >= 1) ripple.visible = false; }
+      if (!quiet) spinner.rotation.y += dt*2*Math.PI/EARTH_PERIOD; earthU.uTime.value = t; metros.material.uniforms.uTime.value = t;
+      let featMetro = -1; if (lifted && lifted.c.metro != null && metroIndex.has(lifted.c.metro)) featMetro = metroIndex.get(lifted.c.metro);
+      for (let i = 0; i < MN; i++){ const want = i === featMetro ? lifted.lift : 0; mFeat[i] += (want - mFeat[i])*(1 - Math.pow(0.02, dt)); } mFeatAttr.needsUpdate = true;
+      let tieA = 0;
+      if (featMetro >= 0){ tmpM.copy(metroLocal[featMetro]); spinner.localToWorld(tmpM); tmpV.copy(tmpM).sub(earth.position).normalize(); tmpU.copy(camPos).sub(tmpM).normalize(); if (tmpV.dot(tmpU) > 0.08){ const p = tieGeo.attributes.position.array; p[0] = tmpM.x; p[1] = tmpM.y; p[2] = tmpM.z; p[3] = stagePos.x; p[4] = stagePos.y - stageSc*BASE*0.5; p[5] = stagePos.z; tieGeo.attributes.position.needsUpdate = true; tieA = 0.28*easeInOut(clamp(lifted.lift, 0, 1)); } }
+      tieMat.opacity += (tieA - tieMat.opacity)*(1 - Math.pow(0.03, dt)); tie.visible = tieMat.opacity > 0.01;
       renderer.render(scene, camera);
       if (api.onFrame) api.onFrame(now);
       requestAnimationFrame(tick);
@@ -321,6 +350,7 @@ window.AC = window.AC || {};
       get count(){ return items.length; },
       loadPhotos(url){ return new Promise(res => { const img = new Image(); img.onload = () => { photoTex.image = img; photoTex.needsUpdate = true; mat.uniforms.uPhotoOK.value = 1; photoOK = 1; res(true); }; img.onerror = () => { mat.uniforms.uPhotoOK.value = 0; res(false); }; img.src = url; }); },
       get photosReady(){ return photoOK === 1; },
+      loadEarth(url){ return new Promise(res => { const img = new Image(); img.onload = () => { lightsTex.image = img; lightsTex.needsUpdate = true; earthU.uHas.value = 1; res(true); }; img.onerror = () => res(false); img.src = url; }); },
       glide(dur){ startGlide(dur); dimTo(0); },
       hold(){ holdCamera(); },
       get gliding(){ return glideOn; },

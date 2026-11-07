@@ -21,6 +21,7 @@ window.AC = window.AC || {};
   const poolSize = (AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.size) || 12;
   let scene;
   try { scene = AC.scene.createScene({ stage, canvas: $('#gl'), poolSize, reducedMotion: () => reduced }); } catch (e){ console.error(e); stage.classList.add('nogl'); return; }
+  scene.loadEarth((AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.earth) || 'assets/earth-lights.jpg');
   scene.loadPhotos((AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.atlas) || 'assets/portraits/atlas.jpg').then(ok => { if (!ok) note('Portraits could not load. Showing initials instead.'); });
 
   adapter.list().forEach((c, i, arr) => scene.add(c, false, arr.length));
@@ -80,7 +81,7 @@ window.AC = window.AC || {};
     else { ui.fPortrait.hidden = true; ui.fInitials.hidden = false; const parts = c.displayName.trim().split(/\s+/); ui.fInitials.textContent = ((Array.from(parts[0])[0] || '') + (parts.length > 1 ? Array.from(parts[parts.length - 1])[0] : '')).toUpperCase(); }
     ui.fPortrait.alt = 'Portrait of ' + c.displayName;
   }
-  function showFocus(c, kicker){ $('#f-lede').hidden = true; const words = String(c.commitment).trim().split(/\s+/).length; ui.focus.classList.toggle('long', words > 18 && words <= 34); ui.focus.classList.toggle('verylong', words > 34); ui.fKicker.textContent = kicker; ui.fText.textContent = c.commitment; ui.fName.textContent = c.displayName; ui.fTheme.textContent = themeLabel(c.themeIds[0]); ui.fMore.hidden = true; setPortrait(c); ui.focus.hidden = false; requestAnimationFrame(() => ui.focus.classList.add('on')); ui.focus.setAttribute('aria-label', kicker + ': ' + c.displayName); ui.fText.focus({ preventScroll: true }); }
+  function showFocus(c, kicker){ $('#f-lede').hidden = true; const words = String(c.commitment).trim().split(/\s+/).length; ui.focus.classList.toggle('long', words > 18 && words <= 34); ui.focus.classList.toggle('verylong', words > 34); ui.fKicker.textContent = kicker; ui.fText.textContent = c.commitment; ui.fName.textContent = c.displayName; ui.fTheme.textContent = themeLabel(c.themeIds[0]) + (c.metro ? ' · ' + c.metro : ''); ui.fMore.hidden = true; setPortrait(c); ui.focus.hidden = false; requestAnimationFrame(() => ui.focus.classList.add('on')); ui.focus.setAttribute('aria-label', kicker + ': ' + c.displayName); ui.fText.focus({ preventScroll: true }); }
   function hideFocus(){ ui.focus.classList.remove('on'); setTimeout(() => { if (!ui.focus.classList.contains('on')) ui.focus.hidden = true; }, 700); }
   function showArrival(recs, remaining){ const c = recs[0].c; showFocus(c, 'Someone joins'); $('#f-lede').hidden = false; ui.fMore.hidden = !(recs.length > 1 || remaining); ui.fMore.textContent = recs.length > 1 ? (recs.length - 1) + ' more joined with them' + (remaining ? ', ' + remaining + ' waiting' : '') : remaining + ' more waiting to join'; }
   let themeRecs = [];

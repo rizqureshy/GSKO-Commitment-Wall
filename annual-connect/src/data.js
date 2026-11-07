@@ -135,6 +135,15 @@ window.AC = window.AC || {};
     listening: ['Listen with intention','One more question','Repeat back what I heard','Phone face down','Hear the whole objection','Ask what to stop','Listen before they buy','Let silence work','Sit with the feedback','Ask how, not just what','Read the whole message','One meeting to only listen','Notice the unsaid','Airtime for the quiet idea','Assume they know something']
   };
 
+  // Equinix metros, approximate coordinates, illustrative only until an internal list replaces them.
+  const METROS = [
+    ['Ashburn',39.0,-77.5],['New York',40.7,-74.0],['Chicago',41.9,-87.6],['Dallas',32.8,-96.8],['Silicon Valley',37.4,-122.0],['Los Angeles',34.0,-118.2],['Seattle',47.6,-122.3],['Toronto',43.7,-79.4],['Miami',25.8,-80.2],['Atlanta',33.7,-84.4],['Denver',39.7,-105.0],
+    ['São Paulo',-23.5,-46.6],['Rio de Janeiro',-22.9,-43.2],['Bogotá',4.7,-74.1],['Mexico City',19.4,-99.1],
+    ['London',51.5,-0.1],['Amsterdam',52.4,4.9],['Frankfurt',50.1,8.7],['Paris',48.9,2.3],['Madrid',40.4,-3.7],['Milan',45.5,9.2],['Zurich',47.4,8.5],['Stockholm',59.3,18.1],['Helsinki',60.2,24.9],['Dublin',53.3,-6.3],['Warsaw',52.2,21.0],['Lisbon',38.7,-9.1],['Istanbul',41.0,28.9],
+    ['Dubai',25.2,55.3],['Abu Dhabi',24.5,54.4],['Muscat',23.6,58.4],['Johannesburg',-26.2,28.0],['Lagos',6.5,3.4],
+    ['Mumbai',19.1,72.9],['Chennai',13.1,80.3],['Singapore',1.3,103.8],['Kuala Lumpur',3.1,101.7],['Jakarta',-6.2,106.8],['Hong Kong',22.3,114.2],['Shanghai',31.2,121.5],['Tokyo',35.7,139.7],['Osaka',34.7,135.5],['Seoul',37.6,127.0],['Manila',14.6,121.0],['Sydney',-33.9,151.2],['Melbourne',-37.8,145.0],['Perth',-31.9,115.9]
+  ].map(([name, lat, lon]) => ({ name, lat, lon }));
+
   const FIRST = ['Maya','Daniel','Priya','Tomás','Aisha','Noah','Mei','Lukas','Fatima','Jonas','Sofia','Kwame','Hanna','Rafael','Yuki','Amara','Elias','Ingrid','Omar','Leila','Mateo','Chioma','Arjun','Nadia','Felix','Zara','Ibrahim','Clara','Ravi','Esme','Kenji','Lucía','Samuel','Anya','Tariq','Greta','Diego','Imani','Oskar','Ha-eun','Bruno','Selin','Idris','Marta','Jin','Rosa','Emeka','Freya','Hugo','Naomi','Adebayo','Elin','Mohammed','Ines','Kai','Beatriz','Yusuf','Sigrid','Andrés','Wren'];
   const LAST = ['Chen','Reyes','Okafor','Lindqvist','Haddad','Fischer','Nakamura','Adeyemi','Rossi','Kowalski','Rahman','Park','Marín','Berg','Ito','Demir','Novak','Mensah','Silva','Andersson','Khan','Moreau','Tanaka','Dubois','Kim','Varga','Abebe','Costa','Nguyen','Bauer','Osei','Jensen','Sato','Ferreira','Hussain','Laurent','Petrov','Ahmed','Larsen','Mwangi','Schneider','Yilmaz','Oliveira','Shah','Weber','Santos','Diallo','Romano','Kaur','Olsen'];
 
@@ -154,7 +163,7 @@ window.AC = window.AC || {};
       const id = 'c' + (1000 + i).toString(36) + '-' + hashStr(name + text).toString(36).slice(0, 4);
       const hasPortrait = rng() < 0.78;
       out.push({
-        id, displayName: name, commitment: text, excerpt: ex, themeIds: [theme.id],
+        id, displayName: name, commitment: text, excerpt: ex, themeIds: [theme.id], metro: METROS[Math.floor(rng()*METROS.length)].name,
         portrait: hasPortrait ? { pool: Math.floor(rng()*1e6) } : null,   // resolved against the demo pool by the app
         submittedAt: base + Math.floor(rng()*1000*60*60*9),
         eligible: true
@@ -181,7 +190,7 @@ window.AC = window.AC || {};
         const list = COMMITMENTS[theme.id];
         const name = FIRST[Math.floor(rng()*FIRST.length)] + ' ' + LAST[Math.floor(rng()*LAST.length)];
         const ti = Math.floor(rng()*list.length); const text = list[ti];
-        const c = { id: 'new' + (++serial).toString(36) + '-' + hashStr(name + Date.now()).toString(36).slice(0, 4), displayName: name, commitment: text, excerpt: EXCERPTS[theme.id][ti], themeIds: [theme.id], portrait: rng() < 0.8 ? { pool: Math.floor(rng()*1e6) } : null, submittedAt: Date.now(), eligible: true, isNew: true };
+        const c = { id: 'new' + (++serial).toString(36) + '-' + hashStr(name + Date.now()).toString(36).slice(0, 4), displayName: name, commitment: text, excerpt: EXCERPTS[theme.id][ti], themeIds: [theme.id], metro: METROS[Math.floor(rng()*METROS.length)].name, portrait: rng() < 0.8 ? { pool: Math.floor(rng()*1e6) } : null, submittedAt: Date.now(), eligible: true, isNew: true };
         items = items.concat([c]);
         subs.forEach(fn => fn({ type: 'added', contribution: c }));
         return c;
@@ -190,5 +199,5 @@ window.AC = window.AC || {};
     };
   }
 
-  AC.data = { THEMES, createLocalAdapter, hashStr, mulberry32 };
+  AC.data = { THEMES, METROS, createLocalAdapter, hashStr, mulberry32 };
 })(window.AC);
