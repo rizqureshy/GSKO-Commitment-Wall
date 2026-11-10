@@ -1,25 +1,32 @@
-// Builds dist/index.html: a single self-contained file (scripts inlined, demo portrait pool embedded as data URIs).
-// Usage: node tools/build.mjs            -> dist/index.html for Cloudflare Pages or any static host
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+// Build the deployable site and the self-contained preview.
+//   node tools/build.mjs
+// dist/            the site as static files (index.html, join.html, src, vendor, assets): what gets hosted
+// ../docs/         the same, for GitHub Pages
+// dist/preview/    one self-contained wall page plus the phone page, for previews that cannot load sibling files
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, cpSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const html = readFileSync(join(root, 'index.html'), 'utf8');
-const scripts = ['data', 'layout', 'sequencer', 'scene', 'app'].map(n => readFileSync(join(root, 'src', n + '.js'), 'utf8'));
-const pdir = join(root, 'assets', 'portraits');
-const focus = readdirSync(pdir).filter(f => /^portrait-\d+\.jpg$/.test(f)).sort().map(f => 'data:image/jpeg;base64,' + readFileSync(join(pdir, f)).toString('base64'));
-const atlas = 'data:image/jpeg;base64,' + readFileSync(join(pdir, 'atlas.jpg')).toString('base64');
-const earth = 'data:image/jpeg;base64,' + readFileSync(join(root, 'assets', 'earth-lights.jpg')).toString('base64');
-const pool = `window.AC = window.AC || {}; AC.PORTRAIT_POOL = { size: ${focus.length}, atlas: ${JSON.stringify(atlas)}, focus: ${JSON.stringify(focus)}, earth: ${JSON.stringify(earth)} };`;
-const inlined = '<script>\n' + pool + '\n' + scripts.join('\n') + '\n</script>';
-const out = html.replace(/<!-- app-scripts -->[\s\S]*?<!-- \/app-scripts -->/, inlined);
-mkdirSync(join(root, 'dist'), { recursive: true });
-writeFileSync(join(root, 'dist', 'index.html'), out);
-// Artifact variant: claude.ai wraps pages in its own skeleton, so strip ours.
-const art = out.replace(/^[\s\S]*?<head>\s*<meta charset="utf-8">\s*<meta name="viewport"[^>]*>\s*/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '');
-writeFileSync(join(root, 'dist', 'artifact.html'), art);
-// GitHub Pages: the same single-file build is published from /docs at the repository root.
-mkdirSync(join(root, '..', 'docs'), { recursive: true });
-writeFileSync(join(root, '..', 'docs', 'index.html'), out);
+const read = p => readFileSync(join(root, p), 'utf8');
+const b64 = (p, type) => `data:${type};base64,` + readFileSync(join(root, p)).toString('base64');
+
+// 1. static site
+for (const out of [join(root, 'dist'), join(root, '..', 'docs')]){
+  rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
+  for (const f of ['index.html', 'join.html']) writeFileSync(join(out, f), read(f));
+  for (const d of ['src', 'vendor', 'assets']) cpSync(join(root, d), join(out, d), { recursive: true });
+}
 writeFileSync(join(root, '..', 'docs', '.nojekyll'), '');
-console.log('dist/index.html', (out.length/1024).toFixed(0) + ' KB,', focus.length, 'portraits embedded');
+
+// 2. self-contained preview
+const fonts = css => css.replace(/url\((assets\/fonts\/[^)]+)\)/g, (_, p) => `url(${b64(p, 'font/woff2')})`);
+const portraits = readdirSync(join(root, 'assets', 'portraits')).filter(f => /^portrait-\d+\.jpg$/.test(f)).sort().map(f => b64('assets/portraits/' + f, 'image/jpeg'));
+const assets = `window.AC = window.AC || {}; AC.ASSETS = { night: ${JSON.stringify(b64('assets/earth-night.jpg', 'image/jpeg'))}, day: ${JSON.stringify(b64('assets/earth-day.jpg', 'image/jpeg'))}, portraits: ${JSON.stringify(portraits)} };`;
+const inline = (html, files, extra) => html.replace(/<!-- scripts -->[\s\S]*?<!-- \/scripts -->/, files.map(f => `<script>\n${f === 'ASSETS' ? extra : read(f)}\n</script>`).join('\n'));
+const stripShell = html => html.replace(/^[\s\S]*?<meta name="viewport"[^>]*>\s*/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '');
+const preview = join(root, 'dist', 'preview'); mkdirSync(preview, { recursive: true });
+const wall = inline(fonts(read('index.html')), ['vendor/three.min.js', 'ASSETS', 'src/data.js', 'src/store.js', 'src/orbit.js', 'src/sequencer.js', 'src/scene.js', 'src/app.js'], assets);
+const phone = inline(fonts(read('join.html')), ['src/data.js', 'src/store.js', 'src/join.js']);
+writeFileSync(join(preview, 'index.html'), stripShell(wall));     // the preview host supplies the document shell
+writeFileSync(join(preview, 'join.html'), phone);
+console.log('site -> dist/ and ../docs/ · preview wall', (wall.length/1048576).toFixed(2), 'MB · phone', (phone.length/1024).toFixed(0), 'KB ·', portraits.length, 'sample portraits');

@@ -1,217 +1,233 @@
-/* Annual Connect — application layer: wires data, layout, sequencer and scene to the DOM.
-   Views: ALL OF US (overview), ONE PROMISE (focus), A SHARED INTENTION (theme), SOMEONE JOINS (arrival).
-   Modes: guided display (runs itself) and personal exploration (viewer drives). */
+/* Annual Connect — the wall.
+   Wires the store, the sequencer and the scene to the page. Four views of one world: all of us (the ring),
+   one promise, a shared intention, someone joins. Two modes: the guided display runs itself; personal
+   exploration waits for a hand. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
-  const $ = (s, r) => (r || document).querySelector(s);
+  const $ = (s, r) => (r || document).querySelector(s), $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const O = AC.orbit, D = Math.PI/180;
   const params = new URLSearchParams(location.search);
-  const COUNT = Math.max(0, Math.min(1200, parseInt(params.get('n') || '300', 10) || 0));
-  const isTouch = matchMedia('(pointer: coarse)').matches;
-  const MODE = params.get('mode') || (isTouch || innerWidth < 900 ? 'explore' : 'guided');
-  const DEV = params.get('dev') === '1' && params.get('display') !== '1';
-  const DAWN = params.get('dawn') !== '0';
-  const DISPLAY = params.get('display') === '1';
+  const COUNT = Math.max(0, Math.min(1500, parseInt(params.get('n') == null ? '300' : params.get('n'), 10) || 0));
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const MODE = params.get('mode') || (touch || innerWidth < 900 ? 'explore' : 'guided');
+  const DISPLAY = params.get('display') === '1', DEV = params.get('dev') === '1' && !DISPLAY, DAWN = params.get('dawn') !== '0';
   let reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const stage = $('#stage');
-  if (!window.THREE){ stage.classList.add('nogl'); return; }
+  const stage = $('#stage'), chrome = $('#chrome');
+  const A = AC.ASSETS || { night: 'assets/earth-night.jpg', day: 'assets/earth-day.jpg', portraits: Array.from({ length: 12 }, (_, i) => 'assets/portraits/portrait-' + String(i).padStart(2, '0') + '.jpg') };
+  const store = AC.store.create({ count: COUNT });
+  const themeLabel = id => (store.themes.find(t => t.id === id) || {}).label || '';
+  const metroOf = code => AC.data.METRO_BY_CODE[code] || null;
+  const urlOf = c => c.portrait ? (c.portrait.url || A.portraits[c.portrait.pool % A.portraits.length]) : null;
+  const fmt = n => n.toLocaleString('en-US');
+  const metaLine = c => { const m = metroOf(c.metro); return themeLabel(c.themeIds[0]) + (m ? ' · ' + m.name + ' ' + m.code : ''); };
+  const excerptOf = c => c.excerpt || (() => { const w = String(c.commitment).replace(/^I will\s+/i, '').replace(/[.]+$/, '').split(/\s+/).slice(0, 5).join(' '); return w.charAt(0).toUpperCase() + w.slice(1); })();
 
-  const adapter = AC.data.createLocalAdapter({ count: COUNT });
-  const themeLabel = id => (adapter.themes.find(t => t.id === id) || {}).label || '';
-  const poolSize = (AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.size) || 12;
-  let scene;
-  try { scene = AC.scene.createScene({ stage, canvas: $('#gl'), poolSize, reducedMotion: () => reduced }); } catch (e){ console.error(e); stage.classList.add('nogl'); return; }
-  scene.loadEarth((AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.earth) || 'assets/earth-lights.jpg');
-  scene.loadPhotos((AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.atlas) || 'assets/portraits/atlas.jpg').then(ok => { if (!ok) note('Portraits could not load. Showing initials instead.'); });
+  const ui = { title: $('#title'), count: $('#count'), status: $('#status'), over: $('#over'), labels: $('#labels'), focus: $('#focus'), trio: $('#trio'), note: $('#note'), joined: $('#joined'), empty: $('#empty'), dev: $('#dev'),
+    search: $('#search'), sInput: $('#s-input'), sResults: $('#s-results'), list: $('#listdlg'), lInput: $('#l-input'), lRows: $('#l-rows') };
+  let noteT = 0; const note = msg => { ui.note.textContent = msg; ui.note.hidden = false; clearTimeout(noteT); noteT = setTimeout(() => ui.note.hidden = true, 4600); };
 
-  adapter.list().forEach((c, i, arr) => scene.add(c, false, arr.length));
+  if (!window.THREE){ stage.classList.add('nogl'); $('#veil').classList.add('off'); chrome.classList.remove('asleep'); return; }
+  let scene; try { scene = AC.scene.create({ stage, canvas: $('#gl'), reducedMotion: () => reduced }); } catch (e){ console.error(e); stage.classList.add('nogl'); $('#veil').classList.add('off'); chrome.classList.remove('asleep'); return; }
+  scene.loadEarth(A.night, A.day);
 
-  // ---- helpers ----
-  function excerpt(c, n){ if (c && c.excerpt) return c.excerpt; const text = c && c.commitment || c; let t = String(text).replace(/^I will\s+/i, '').replace(/[.]+$/, ''); const w = t.split(/\s+/); t = w.slice(0, n || 5).join(' '); return t.charAt(0).toUpperCase() + t.slice(1); }
-  function related(c, k){
-    const me = scene.byId.get(c.id); if (!me) return [];
-    return scene.items.filter(r => r.c.id !== c.id && r.c.eligible && !r.pending && r.c.themeIds[0] === c.themeIds[0])
-      .map(r => ({ r, d: Math.hypot(r.x - me.x, r.y - me.y, r.z - me.z) })).sort((a, b) => a.d - b.d).slice(0, k).map(o => o.r.c);
-  }
-  function fmt(n){ return n.toLocaleString('en-US'); }
-  let noteTimer = 0; function note(msg){ const el = $('#note'); el.textContent = msg; el.hidden = false; clearTimeout(noteTimer); noteTimer = setTimeout(() => el.hidden = true, 4200); }
+  // ---------- who is where ----------
+  const usable = r => !r.pending && r.c.eligible;
+  const inFront = r => usable(r) && r.shown > 0.5 && r.theta > O.FRONT[0] && r.theta < O.FRONT[1];
+  function related(c, k){ const me = scene.byId.get(c.id); if (!me) return [];
+    const near = scene.items.filter(r => r !== me && usable(r) && r.c.themeIds[0] === c.themeIds[0]).map(r => ({ r, d: Math.abs(r.theta - me.theta) })).sort((a, b) => a.d - b.d).slice(0, 14).map(o => o.r.c);
+    // prefer three different prints side by side, and three different promises
+    const out = [], seen = new Set([urlOf(c) || c.id]), said = new Set([c.commitment]);
+    for (const x of near){ if (out.length >= k) break; const u = urlOf(x) || x.id; if (seen.has(u) || said.has(x.commitment)) continue; seen.add(u); said.add(x.commitment); out.push(x); }
+    for (const x of near){ if (out.length >= k) break; if (!out.includes(x)) out.push(x); }
+    return out; }
+  let metrosBelow = new Set();
 
-  // ---- DOM refs ----
-  const ui = {
-    title: $('#title'), count: $('#count'), status: $('#status'), labels: $('#labels'),
-    focus: $('#focus'), fKicker: $('#f-kicker'), fText: $('#f-text'), fName: $('#f-name'), fTheme: $('#f-theme'), fMore: $('#f-more'), fPortrait: $('#f-portrait'), fInitials: $('#f-initials'),
-    theme: $('#theme'), tLabel: $('#t-label'), tCount: $('#t-count'),
-    resume: $('#b-resume'), pause: $('#b-pause'), close: $('#b-close'), explore: $('#b-explore'), find: $('#b-find'), guided: $('#b-guided'), full: $('#b-full'), list: $('#b-list'), motion: $('#b-motion'),
-    search: $('#search'), sInput: $('#s-input'), sResults: $('#s-results'), listDlg: $('#listdlg'), lInput: $('#l-input'), lRows: $('#l-rows'), joined: $('#joined'), empty: $('#empty'), dev: $('#dev')
-  };
-  ui.count.textContent = fmt(scene.count);
-  if (!scene.count) ui.empty.hidden = false;
-
-  // ---- sequencer ----
-  const seq = AC.sequencer.createSequencer({
-    getPool: () => { const front = scene.items.filter(r => !r.pending && r.alpha > 0.5 && r.home.t > 0.55 && r.home.t < 0.92); return (front.length >= 3 ? front : scene.items.filter(r => !r.pending)).map(r => r.c); },
-    getRelated: (c, k) => related(c, k),
-    random: AC.data.mulberry32(7),
-    onEnter(kind, data, o){
+  // ---------- the sequence ----------
+  const seq = AC.sequencer.create({
+    pool: () => { const f = scene.items.filter(inFront); return (f.length >= 3 ? f : scene.items.filter(usable)).map(r => r.c); },
+    prefer: c => metrosBelow.has(c.metro),
+    related,
+    onEnter(kind, data){
+      if (kind === 'overview'){ ui.title.classList.remove('away'); return; }
       ui.title.classList.add('away');
-      if (kind === 'overview'){ ui.title.classList.remove('away'); scene.glide(); return; }
-      hideTheme(); scene.release();
-      if (kind === 'focus'){ const rec = scene.byId.get(data.id); if (!rec) return; if (!o || !o.manual) scene.saveViewpoint(); scene.focus(rec); showFocus(data, 'One promise'); }
-      if (kind === 'theme'){ hideFocus(); const recs = [data.lead].concat(data.related).map(c => scene.byId.get(c.id)).filter(Boolean); if (!o || !o.manual) scene.saveViewpoint(); scene.group(recs); showTheme(data, recs); }
-      if (kind === 'arrival'){ const recs = data.ids.map(id => scene.byId.get(id)).filter(Boolean); if (!recs.length) return; scene.saveViewpoint(); recs.forEach(introduce); scene.arrival(recs[0]); showArrival(recs, data.remaining); const rel = related(recs[0].c, 6).map(c => c.id); setTimeout(() => scene.pulse(rel), 900); }
+      if (kind === 'focus'){ const rec = scene.byId.get(data.id); if (!rec) return; scene.stage([rec]); showFocus(data, 'One promise'); }
+      if (kind === 'theme'){ const recs = [data.lead].concat(data.related).map(c => scene.byId.get(c.id)).filter(Boolean); scene.stage(recs); showTrio(data.lead, recs); }
+      if (kind === 'arrival'){ const recs = data.ids.map(id => scene.byId.get(id)).filter(Boolean); if (!recs.length) return;
+        scene.arrive(recs[0], 'stage'); recs.slice(1).forEach(r => scene.arrive(r, 'ring')); scene.stage([recs[0]], true);
+        showFocus(recs[0].c, 'Someone joins', 'One more voice.', recs.length > 1 || data.remaining ? (recs.length > 1 ? (recs.length - 1) + ' more joined with them' : '') + (data.remaining ? (recs.length > 1 ? ' · ' : '') + data.remaining + ' waiting' : '') : ''); }
     },
-    onExit(kind, o){ hideFocus(); hideTheme(); scene.release(); if (!(o && o.silent) || kind) scene.restoreViewpoint(undefined, seq.state.startsWith('GUIDED')); }
+    onExit(){ hidePanels(); scene.unstage(); }
   });
-  seq.onChange(s => { renderStatus(s); if (s.state.startsWith('MANUAL') || s.state === 'PAUSED') scene.hold(); const flowing = (s.state === 'GUIDED_OVERVIEW' || s.state === 'GUIDED_FOCUS' || s.state === 'GUIDED_ARRIVAL') && !scene.closingOn; scene.stream(flowing ? 1 : 0); });
+  seq.onChange(s => { renderStatus(s); scene.flow(s.state.startsWith('GUIDED') && !scene.sunriseOn ? 1 : 0);
+    if ((s.state === 'GUIDED_OVERVIEW' || s.state === 'MANUAL_EXPLORE') && !scene.dawning && !scene.sunriseOn) ui.title.classList.remove('away'); });
 
   function renderStatus(s){
-    const st = s.state; const guided = st.startsWith('GUIDED'); const manual = st.startsWith('MANUAL');
-    ui.status.textContent = st === 'PAUSED' ? 'Paused' : guided ? 'Guided view' : 'Exploring';
-    ui.resume.hidden = guided; ui.pause.hidden = !guided; ui.close.hidden = !(st === 'MANUAL_FOCUS' || st === 'GUIDED_FOCUS' || st === 'GUIDED_THEME' || st === 'GUIDED_ARRIVAL');
-    ui.guided.setAttribute('aria-pressed', String(guided)); ui.explore.setAttribute('aria-pressed', String(manual));
-    stage.dataset.state = st;
-    const q = s.queued; $('#queued').hidden = !q; $('#queued').textContent = q === 1 ? '1 arrival waiting' : q + ' arrivals waiting';
-    if (DEV) $('#d-state').textContent = st;
+    const st = s.state, guided = st.startsWith('GUIDED');
+    ui.status.textContent = st === 'PAUSED' ? (scene.sunriseOn ? 'The closing' : 'Paused') : guided ? 'Guided view' : 'Exploring';
+    $('#b-pause').hidden = !guided; $$('[data-resume]').forEach(b => b.hidden = guided);
+    $('#b-guided').setAttribute('aria-pressed', String(guided)); $('#b-explore').setAttribute('aria-pressed', String(st.startsWith('MANUAL')));
+    stage.dataset.state = st; const q = $('#queued'); q.hidden = !s.queued; q.textContent = s.queued === 1 ? '1 arrival waiting' : s.queued + ' arrivals waiting';
+    if (!DISPLAY) $('#d-state').textContent = st.toLowerCase().replace(/_/g, ' ');
   }
 
-  // ---- views ----
-  function setPortrait(c){
-    const rec = scene.byId.get(c.id);
-    if (c.portrait && scene.photosReady){ const p = c.portrait.pool % poolSize; const src = AC.PORTRAIT_POOL && AC.PORTRAIT_POOL.focus ? AC.PORTRAIT_POOL.focus[p] : ('assets/portraits/portrait-' + String(p).padStart(2, '0') + '.jpg'); ui.fPortrait.src = src; ui.fPortrait.hidden = false; ui.fInitials.hidden = true; ui.fPortrait.style.transform = rec && rec.i % 2 ? 'scaleX(-1)' : ''; }
-    else { ui.fPortrait.hidden = true; ui.fInitials.hidden = false; const parts = c.displayName.trim().split(/\s+/); ui.fInitials.textContent = ((Array.from(parts[0])[0] || '') + (parts.length > 1 ? Array.from(parts[parts.length - 1])[0] : '')).toUpperCase(); }
-    ui.fPortrait.alt = 'Portrait of ' + c.displayName;
+  // ---------- the words ----------
+  function show(el){ el.hidden = false; requestAnimationFrame(() => el.classList.add('on')); ui.labels.classList.add('off'); }
+  function hidePanels(){ [ui.focus, ui.trio].forEach(el => { el.classList.remove('on'); setTimeout(() => { if (!el.classList.contains('on')) el.hidden = true; }, 900); }); ui.labels.classList.remove('off'); }
+  function showFocus(c, kicker, lede, more){
+    ui.trio.classList.remove('on'); ui.trio.hidden = true;
+    const words = String(c.commitment).trim().split(/\s+/).length; ui.focus.classList.toggle('long', words > 18 && words <= 34); ui.focus.classList.toggle('verylong', words > 34);
+    $('#f-kicker').textContent = kicker; const l = $('#f-lede'); l.hidden = !lede; l.textContent = lede || '';
+    $('#f-text').textContent = c.commitment; $('#f-name').textContent = c.displayName; $('#f-meta').textContent = metaLine(c);
+    const m = $('#f-more'); m.hidden = !more; m.textContent = more || '';
+    ui.focus.setAttribute('aria-label', kicker + ': ' + c.displayName); show(ui.focus);
   }
-  function showFocus(c, kicker){ $('#f-lede').hidden = true; const words = String(c.commitment).trim().split(/\s+/).length; ui.focus.classList.toggle('long', words > 18 && words <= 34); ui.focus.classList.toggle('verylong', words > 34); ui.fKicker.textContent = kicker; ui.fText.textContent = c.commitment; ui.fName.textContent = c.displayName; ui.fTheme.textContent = themeLabel(c.themeIds[0]) + (c.metro ? ' · ' + c.metro : ''); ui.fMore.hidden = true; setPortrait(c); ui.focus.hidden = false; requestAnimationFrame(() => ui.focus.classList.add('on')); ui.focus.setAttribute('aria-label', kicker + ': ' + c.displayName); ui.fText.focus({ preventScroll: true }); }
-  function hideFocus(){ ui.focus.classList.remove('on'); setTimeout(() => { if (!ui.focus.classList.contains('on')) ui.focus.hidden = true; }, 700); }
-  function showArrival(recs, remaining){ const c = recs[0].c; showFocus(c, 'Someone joins'); $('#f-lede').hidden = false; ui.fMore.hidden = !(recs.length > 1 || remaining); ui.fMore.textContent = recs.length > 1 ? (recs.length - 1) + ' more joined with them' + (remaining ? ', ' + remaining + ' waiting' : '') : remaining + ' more waiting to join'; }
-  let themeRecs = [];
-  function showTheme(data, recs){ themeRecs = recs; ui.tLabel.textContent = themeLabel(data.themeId); ui.tCount.textContent = recs.length + ' related commitments'; ui.theme.hidden = false; requestAnimationFrame(() => ui.theme.classList.add('on')); }
-  function hideTheme(){ themeRecs = []; ui.theme.classList.remove('on'); setTimeout(() => { if (!ui.theme.classList.contains('on')) ui.theme.hidden = true; }, 700); $('#f-lede').hidden = true; }
-
-  // ---- arrivals ----
-  adapter.subscribe(ev => {
-    if (ev.type !== 'added') return;
-    const rec = scene.add(ev.contribution, true); if (!rec) return;
-    ui.count.textContent = fmt(scene.count); ui.empty.hidden = true;
-    if (seq.state.startsWith('GUIDED') || seq.state === 'PAUSED'){ rec.pending = true; rec.alpha = 0; seq.enqueueArrival(ev.contribution.id); }
-    else { introduce(rec); const j = ui.joined; j.textContent = ev.contribution.displayName + ' just joined'; j.hidden = false; clearTimeout(j._t); j._t = setTimeout(() => j.hidden = true, 5000); const rel = related(rec.c, 5).map(c => c.id); scene.pulse(rel); }
-  });
-  function introduce(rec){ if (!rec.pending && !rec.animateIn) return; rec.pending = false; rec.animateIn = true; rec.bornAt = performance.now(); rec.s = 0.001; rec.zoff = 7; }
-
-  // ---- labels (overview excerpts + theme excerpts) ----
-  const labelPool = []; for (let i = 0; i < 10; i++){ const el = document.createElement('div'); el.className = 'lbl'; el.hidden = true; el.innerHTML = '<span class="lx"></span><span class="ln"></span>'; ui.labels.appendChild(el); labelPool.push(el); }
-  const isHero = r => r.home.t > 0.55 && !!r.c.portrait;
-  const P = { x: 0, y: 0, visible: false, depth: 0, halfH: 0, halfW: 0 };
-  function placeLabels(){
-    const st = seq.state; const r = stage.getBoundingClientRect(); const placed = []; let used = 0;
-    const showOverview = (st === 'GUIDED_OVERVIEW' || st === 'MANUAL_EXPLORE') && r.width > 640;
-    let list;
-    if (showOverview){ list = []; for (const rec of scene.items){ if (!isHero(rec) || rec.alpha < 0.5 || rec.pending) continue; const Q = {}; scene.project(rec, Q); if (!Q.visible || Q.halfH < 46 || Q.x < r.width*0.08 || Q.x > r.width*0.9) continue; if (Q.x < r.width*0.52 && Q.y - Q.halfH*0.35 < r.height*0.36) continue; rec._h = Q.halfH; list.push(rec); } list.sort((a, b) => b._h - a._h); const seen = new Set(); list = list.filter(rec => { const k = rec.c.excerpt || rec.c.commitment; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6); }
-    else list = (st === 'GUIDED_THEME' || (st === 'MANUAL_FOCUS' && themeRecs.length)) ? themeRecs : [];
-    for (const rec of list){ if (used >= labelPool.length) break; if (rec.alpha < 0.5 || rec.pending) continue; scene.project(rec, P); if (!P.visible || P.depth > 0.9995) continue;
-      const el = labelPool[used]; const w = Math.min(showOverview ? 220 : 190, r.width*0.2), h = showOverview ? 64 : 58;
-      const cands = [[P.x + P.halfW + 16, P.y - P.halfH*0.35], [P.x - P.halfW - 16 - w, P.y - P.halfH*0.35], [P.x - w/2, P.y + P.halfH + 12], [P.x - w/2, P.y - P.halfH - h - 8]];
-      let x = -1, y = -1;
-      for (const [cx, cy] of cands){ if (cx < 12 || cx + w > r.width - 12 || cy < 60 || cy + h > r.height - 84) continue; if (placed.some(b => cx < b.x + b.w && cx + w > b.x && cy < b.y + b.h && cy + h > b.y)) continue; x = cx; y = cy; break; }
-      if (x < 0) continue;
-      placed.push({ x, y, w, h });
-      el.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)'; el.style.width = w + 'px';
-      el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && P.halfH > 110); el.hidden = false; used++; }
-    for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
+  function showTrio(lead, recs){
+    ui.focus.classList.remove('on'); ui.focus.hidden = true;
+    $('#t-label').textContent = themeLabel(lead.themeIds[0]); const ol = $('#t-list'); ol.textContent = '';
+    recs.forEach(r => { const li = document.createElement('li'), b = document.createElement('button'), q = document.createElement('q'), s = document.createElement('span'); b.type = 'button'; q.textContent = r.c.commitment; s.className = 'mono'; const m = metroOf(r.c.metro); s.textContent = r.c.displayName + (m ? ' · ' + m.code : ''); b.append(q, s); b.addEventListener('click', () => select(r.c)); li.append(b); ol.append(li); });
+    show(ui.trio);
   }
-  scene.onFrame = () => { placeLabels(); };
 
-  // ---- selection, hover, orbit ----
+  // ---------- excerpts beside the nearest prints ----------
+  const pool = []; for (let i = 0; i < 5; i++){ const el = document.createElement('div'); el.className = 'lbl'; el.hidden = true; ui.labels.appendChild(el); pool.push(el); }
+  const P = {}; let titleBox = null, boxT = 0;
+  function placeLabels(now){
+    const st = seq.state, r = stage.getBoundingClientRect(); let used = 0;
+    const on = (st === 'GUIDED_OVERVIEW' || st === 'MANUAL_EXPLORE') && r.width > 700 && !scene.staged.length && !scene.dawning && !scene.sunriseOn;
+    if (on){
+      if (now - boxT > 700){ boxT = now; const b = ui.title.getBoundingClientRect(); titleBox = ui.title.classList.contains('away') ? null : { x: b.left - r.left - 20, y: b.top - r.top - 16, w: b.width + 60, h: b.height + 40 }; }
+      const cand = []; for (const rec of scene.items){ if (!rec.c.portrait || !inFront(rec)) continue; scene.project(rec, P); if (!P.visible || P.halfH < 44 || P.halfH > 230 || P.dist < 20) continue; cand.push({ rec, x: P.x, y: P.y, hh: P.halfH, hw: P.halfW }); }
+      cand.sort((a, b) => b.hh - a.hh); const seen = new Set(), placed = titleBox ? [titleBox] : [];
+      for (const c of cand){ if (used >= pool.length) break; const text = excerptOf(c.rec.c); if (seen.has(text)) continue;
+        const w = Math.min(230, r.width*0.19), h = 62; let x = -1, y = -1;
+        for (const [cx, cy] of [[c.x + c.hw + 14, c.y - c.hh*0.3], [c.x - c.hw - 14 - w, c.y - c.hh*0.3], [c.x - w/2, c.y + c.hh + 10]]){ if (cx < 14 || cx + w > r.width - 14 || cy < 70 || cy + h > r.height - 70) continue; if (placed.some(b => cx < b.x + b.w && cx + w > b.x && cy < b.y + b.h && cy + h > b.y)) continue; x = cx; y = cy; break; }
+        if (x < 0) continue; seen.add(text); placed.push({ x, y, w, h });
+        const el = pool[used++]; el.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)'; el.style.width = w + 'px'; if (el.textContent !== text) el.textContent = text; el.hidden = false; }
+    }
+    for (let i = used; i < pool.length; i++) pool[i].hidden = true;
+  }
+
+  // ---------- where we are over the world ----------
+  let teleT = 0;
+  function telemetry(now){
+    if (now - teleT < 600) return; teleT = now; metrosBelow = scene.metrosInView();
+    const g = scene.ground(); let best = null, bd = 1e9;
+    for (const m of store.metros){ const d = Math.acos(Math.max(-1, Math.min(1, Math.sin(g.lat*D)*Math.sin(m.lat*D) + Math.cos(g.lat*D)*Math.cos(m.lat*D)*Math.cos((g.lon - m.lon)*D))))/D; if (d < bd){ bd = d; best = m; } }
+    ui.over.textContent = best && bd < 7 ? 'Over ' + best.name + ' ' + best.code : Math.abs(g.lat).toFixed(1) + '°' + (g.lat >= 0 ? 'N' : 'S') + ' ' + Math.abs(g.lon).toFixed(1) + '°' + (g.lon >= 0 ? 'E' : 'W');
+  }
+  scene.onFrame = now => { placeLabels(now); telemetry(now); };
+
+  // ---------- hands ----------
+  const isControl = t => !!t.closest('button, a, input, .panel, dialog, #search, #dev');
+  const busy = () => scene.dawning || scene.sunriseOn;
+  // a hand on the ring always takes over from the guided sequence; only a promise the viewer opened themselves holds it still
+  const canScrub = () => !busy() && seq.state !== 'MANUAL_FOCUS';
+  function takeOver(){ if (!seq.state.startsWith('MANUAL')) seq.manual(); }
   let down = null, dragged = false;
-  stage.addEventListener('pointerdown', e => { if (e.target.closest('button, a, input, .panel, dialog')) return; down = { x: e.clientX, y: e.clientY, id: e.pointerId }; dragged = false; });
+  stage.addEventListener('pointerdown', e => { if (isControl(e.target)) return; down = { x: e.clientX, y: e.clientY, id: e.pointerId }; dragged = false; });
   stage.addEventListener('pointermove', e => {
-    if (down && (e.buttons & 1)){ const dx = e.clientX - down.x, dy = e.clientY - down.y; if (!dragged && Math.hypot(dx, dy) > 6){ dragged = true; stage.setPointerCapture(down.id); manualIntent(); } if (dragged && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ scene.scrub((-dy - dx*0.5)*0.0006); down.x = e.clientX; down.y = e.clientY; } return; }
-    if (isTouch) return; const rec = scene.pick(e.clientX, e.clientY); scene.setHover(rec); stage.classList.toggle('hover', !!rec);
+    if (down && (e.buttons & 1 || e.pointerType === 'touch')){ const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      if (!dragged && Math.hypot(dx, dy) > 7 && canScrub()){ dragged = true; try { stage.setPointerCapture(down.id); } catch (err){} takeOver(); }
+      if (dragged){ scene.scrub((dx*0.6 + dy)*0.0013); down.x = e.clientX; down.y = e.clientY; } return; }
+    if (touch || busy()) return; const rec = scene.pick(e.clientX, e.clientY); scene.setHover(rec); stage.classList.toggle('hover', !!rec);
   });
-  stage.addEventListener('pointerup', e => { if (!down) return; const wasDrag = dragged; down = null; if (wasDrag) return; if (e.target.closest('button, a, input, .panel, dialog')) return; const rec = scene.pick(e.clientX, e.clientY); if (rec) select(rec.c); });
-  stage.addEventListener('pointercancel', () => down = null);
-  stage.addEventListener('wheel', e => { if (e.target.closest('.panel, dialog')) return; e.preventDefault(); if (scene.closingOn || scene.dawning) return; if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') return; manualIntent(); scene.scrub((e.deltaY + e.deltaX)*0.00015); }, { passive: false });
-  function manualIntent(){ if (!seq.state.startsWith('MANUAL')) seq.manual(); }
-  const QUIET = ['GUIDED_OVERVIEW', 'MANUAL_EXPLORE', 'PAUSED'];
-  function select(c){ const rec = scene.byId.get(c.id); if (!rec) return; if (QUIET.includes(seq.state)) scene.saveViewpoint(); seq.select(c); }
-  function closeFocus(){ if (seq.state === 'MANUAL_FOCUS' || seq.state.startsWith('GUIDED_')){ if (seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW'){ seq.manual(); scene.release(); scene.restoreViewpoint(); hideFocus(); hideTheme(); } else seq.close(); } }
+  stage.addEventListener('pointerup', e => { if (!down) return; const was = dragged; down = null; if (was || isControl(e.target) || busy()) return; const rec = scene.pick(e.clientX, e.clientY); if (rec) select(rec.c); });
+  stage.addEventListener('pointercancel', () => { down = null; });
+  stage.addEventListener('wheel', e => { if (e.target.closest('dialog, #search')) return; e.preventDefault(); if (!canScrub()) return; takeOver(); scene.scrub((e.deltaY + e.deltaX)*0.00022); }, { passive: false });
 
-  // ---- controls ----
-  ui.close.addEventListener('click', closeFocus);
-  ui.resume.addEventListener('click', () => { scene.resetUser(); seq.resume(); });
-  ui.guided.addEventListener('click', () => { scene.resetUser(); seq.resume(); });
-  ui.pause.addEventListener('click', () => seq.pause());
-  ui.explore.addEventListener('click', () => { if (seq.state === 'MANUAL_FOCUS') seq.close(); else seq.manual(); note('Scroll to move along the ribbon, select a portrait to read.'); });
-  ui.full.addEventListener('click', () => { const el = document.documentElement; const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) f.call(el).catch(() => note('Full screen is not available here.')); });
-  ui.motion.addEventListener('click', () => { reduced = !reduced; ui.motion.setAttribute('aria-pressed', String(reduced)); ui.motion.textContent = reduced ? 'Motion off' : 'Motion on'; document.documentElement.classList.toggle('reduced', reduced); });
-  if (reduced){ ui.motion.setAttribute('aria-pressed', 'true'); ui.motion.textContent = 'Motion off'; document.documentElement.classList.add('reduced'); }
-  document.addEventListener('keydown', e => { if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input') && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ manualIntent(); scene.scrub(e.key === 'ArrowRight' ? 0.02 : -0.02); } if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
+  function select(c){ const rec = scene.byId.get(c.id); if (!rec || rec.pending) return; if (scene.sunriseOn) endClosing(); if (scene.dawning) return;
+    if (!(rec.theta > -0.02 && rec.theta < 0.85)) scene.turnTo(rec, 14*D);       // bring their place round to the front first
+    seq.select(c); }
+  function closeFocus(){ if (seq.state === 'MANUAL_FOCUS') seq.close(); else if (seq.state.startsWith('GUIDED_') && seq.state !== 'GUIDED_OVERVIEW') seq.manual(); }
+  function resume(){ if (scene.sunriseOn) endClosing(); seq.resume(); }
 
-  // ---- search ----
-  function openSearch(){ ui.search.hidden = false; ui.sInput.value = ''; renderResults(''); ui.sInput.focus(); }
-  function closeSearch(){ ui.search.hidden = true; ui.find.focus(); }
-  ui.find.addEventListener('click', openSearch); $('#s-close').addEventListener('click', closeSearch);
-  ui.sInput.addEventListener('input', () => renderResults(ui.sInput.value));
-  function matches(q){ q = q.trim().toLowerCase(); if (!q) return []; return adapter.list().filter(c => c.eligible && (c.displayName.toLowerCase().includes(q) || c.commitment.toLowerCase().includes(q) || themeLabel(c.themeIds[0]).toLowerCase().includes(q))).slice(0, 8); }
-  function renderResults(q){ const res = matches(q); ui.sResults.innerHTML = ''; if (!q.trim()){ ui.sResults.innerHTML = '<p class="hint">Type a name, a word from a commitment, or a theme.</p>'; return; } if (!res.length){ ui.sResults.innerHTML = '<p class="hint">No one matches that yet.</p>'; return; }
-    res.forEach(c => { const b = document.createElement('button'); b.type = 'button'; b.className = 'res'; b.innerHTML = '<b></b><span></span>'; b.firstChild.textContent = c.displayName; b.lastChild.textContent = c.commitment; b.addEventListener('click', () => { closeSearch(); select(c); }); ui.sResults.appendChild(b); }); }
+  $$('[data-close]').forEach(b => b.addEventListener('click', closeFocus));
+  $$('[data-resume]').forEach(b => b.addEventListener('click', resume));
+  $('#b-guided').addEventListener('click', resume);
+  $('#b-explore').addEventListener('click', () => { if (busy()) return; if (seq.state === 'MANUAL_FOCUS') seq.close(); else seq.manual(); note(touch ? 'Drag to move along the ring · tap a portrait to read' : 'Scroll to move along the ring · select a portrait to read'); });
+  $('#b-pause').addEventListener('click', () => seq.pause());
+  $('#b-full').addEventListener('click', () => { const el = document.documentElement, f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) Promise.resolve(f.call(el)).catch(() => note('Full screen is not available here')); else note('Full screen is not available here'); });
+  const motionBtn = $('#b-motion'); const setMotion = () => { motionBtn.setAttribute('aria-pressed', String(reduced)); motionBtn.textContent = reduced ? 'Motion off' : 'Motion on'; document.documentElement.classList.toggle('reduced', reduced); };
+  motionBtn.addEventListener('click', () => { reduced = !reduced; setMotion(); }); setMotion();
+  if (DISPLAY) $('#b-join').hidden = true;
+  document.addEventListener('keydown', e => { const typing = !!e.target.closest('input, textarea');
+    if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.list.open) ui.list.close(); else closeFocus(); return; }
+    if (typing) return;
+    if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && canScrub()){ takeOver(); scene.scrub(e.key === 'ArrowRight' ? 0.035 : -0.035); }
+    if (e.key === '/'){ e.preventDefault(); openSearch(); }
+    if (e.shiftKey && e.key.toLowerCase() === 'c') startClosing();
+    if (e.shiftKey && e.key.toLowerCase() === 'd' && !DISPLAY) ui.dev.hidden = !ui.dev.hidden; });
 
-  // ---- accessible list ----
-  ui.list.addEventListener('click', () => { renderList(''); ui.listDlg.showModal(); ui.lInput.focus(); });
-  $('#l-close').addEventListener('click', () => ui.listDlg.close());
-  ui.lInput.addEventListener('input', () => renderList(ui.lInput.value));
-  function renderList(q){ q = q.trim().toLowerCase(); const rows = adapter.list().filter(c => c.eligible && (!q || c.displayName.toLowerCase().includes(q) || c.commitment.toLowerCase().includes(q) || themeLabel(c.themeIds[0]).toLowerCase().includes(q)));
-    ui.lRows.innerHTML = ''; $('#l-count').textContent = rows.length + ' of ' + adapter.list().length;
-    rows.slice(0, 400).forEach(c => { const li = document.createElement('li'); const b = document.createElement('button'); b.type = 'button'; b.innerHTML = '<b></b><em></em><span></span>'; b.children[0].textContent = c.displayName; b.children[1].textContent = themeLabel(c.themeIds[0]); b.children[2].textContent = c.commitment; b.addEventListener('click', () => { ui.listDlg.close(); select(c); }); li.appendChild(b); ui.lRows.appendChild(li); }); }
+  // ---------- find ----------
+  const hay = c => { const m = metroOf(c.metro); return (c.displayName + ' ' + c.commitment + ' ' + themeLabel(c.themeIds[0]) + ' ' + (m ? m.name + ' ' + m.code : '')).toLowerCase(); };
+  const matches = q => { q = q.trim().toLowerCase(); return q ? store.list().filter(c => c.eligible && hay(c).includes(q)) : []; };
+  function openSearch(){ if (busy()) return; ui.search.hidden = false; ui.sInput.value = ''; renderResults(''); ui.sInput.focus(); }
+  function closeSearch(){ ui.search.hidden = true; $('#b-find').focus(); }
+  $('#b-find').addEventListener('click', openSearch); $('#s-close').addEventListener('click', closeSearch); ui.sInput.addEventListener('input', () => renderResults(ui.sInput.value));
+  function renderResults(q){ ui.sResults.textContent = ''; const hint = t => { const p = document.createElement('p'); p.className = 'hint'; p.textContent = t; ui.sResults.append(p); };
+    if (!q.trim()) return hint('Type a name, a word from a commitment, a theme or a city.'); const res = matches(q).slice(0, 8); if (!res.length) return hint('No one matches that yet.');
+    res.forEach(c => { const b = document.createElement('button'), n = document.createElement('b'), s = document.createElement('span'); b.type = 'button'; b.className = 'res'; n.textContent = c.displayName; s.textContent = c.commitment; b.append(n, s); b.addEventListener('click', () => { closeSearch(); select(c); }); ui.sResults.append(b); }); }
 
-  // ---- the closing ----
-  const titleEl = ui.title; const TITLE_OPEN = titleEl.innerHTML;
-  let closingTimer = 0;
+  // ---------- everything, as text ----------
+  $('#b-list').addEventListener('click', () => { renderList(''); ui.lInput.value = ''; ui.list.showModal(); ui.lInput.focus(); });
+  $('#l-close').addEventListener('click', () => ui.list.close()); ui.lInput.addEventListener('input', () => renderList(ui.lInput.value));
+  function renderList(q){ q = q.trim().toLowerCase(); const all = store.list().filter(c => c.eligible), rows = q ? all.filter(c => hay(c).includes(q)) : all; ui.lRows.textContent = ''; $('#l-count').textContent = fmt(rows.length) + ' of ' + fmt(all.length);
+    rows.slice(0, 500).forEach(c => { const li = document.createElement('li'), b = document.createElement('button'), n = document.createElement('b'), m = document.createElement('em'), s = document.createElement('span'); b.type = 'button'; n.textContent = c.displayName; m.className = 'mono'; m.textContent = c.metro || ''; s.textContent = c.commitment; b.append(n, m, s); b.addEventListener('click', () => { ui.list.close(); select(c); }); li.append(b); ui.lRows.append(li); }); }
+
+  // ---------- arrivals ----------
+  store.subscribe(ev => {
+    if (ev.type === 'find'){ const c = store.list().find(x => x.id === ev.id); if (c) select(c); return; }
+    if (ev.type !== 'added') return;
+    const rec = scene.add(ev.contribution, urlOf(ev.contribution)); if (!rec) return; ui.count.textContent = fmt(scene.count); ui.empty.hidden = true;
+    // the display introduces a newcomer in its own turn; a personal session never has its reading interrupted
+    if (seq.state.startsWith('GUIDED') || seq.state === 'PAUSED'){ rec.pending = true; seq.enqueue(ev.contribution.id); }
+    else { scene.arrive(rec, 'ring'); ui.joined.textContent = ev.contribution.displayName + ' just joined'; ui.joined.hidden = false; clearTimeout(ui.joined._t); ui.joined._t = setTimeout(() => ui.joined.hidden = true, 5200); }
+  });
+
+  // ---------- dawn and the closing ----------
+  const TITLE = ui.title.innerHTML; let closeT = 0;
+  function runDawn(first){
+    const ms = reduced ? 0 : (MODE === 'guided' ? 17000 : 6500);
+    if (first) seq.pause(); else { hidePanels(); scene.unstage(); }
+    if (!ms){ chrome.classList.remove('asleep'); ui.title.classList.remove('away'); if (first) begin(); return; }
+    scene.dawn(ms); ui.title.classList.add('away'); chrome.classList.add('asleep');
+    setTimeout(() => ui.title.classList.remove('away'), ms*0.78); setTimeout(() => chrome.classList.remove('asleep'), ms*0.9);
+    if (first) setTimeout(begin, ms*0.94);
+  }
+  function begin(){ if (MODE === 'guided') seq.start(); else seq.manual(); }
   function startClosing(){
-    if (scene.closingOn) return;
-    seq.pause(); hideFocus(); hideTheme(); scene.release(); scene.hold(); scene.closing(true);
-    titleEl.classList.add('away'); cap.hidden = true;
-    clearTimeout(closingTimer);
-    closingTimer = setTimeout(() => { titleEl.innerHTML = '<span>Our commitments.</span><span>Made.</span>'; titleEl.classList.add('made'); titleEl.classList.remove('away'); }, reduced ? 200 : 9500);
-    note('The closing. Press Resume guided view to continue.');
+    if (scene.sunriseOn || scene.dawning) return;
+    seq.pause(); scene.sunrise(true); scene.flow(0.35); ui.title.classList.add('away'); renderStatus({ state: seq.state, queued: seq.queued });
+    clearTimeout(closeT); closeT = setTimeout(() => { ui.title.innerHTML = '<span>Our commitments.</span><span>Made.</span>'; ui.title.classList.add('made'); ui.title.classList.remove('away'); }, reduced ? 300 : 9000);
   }
-  function endClosing(){ clearTimeout(closingTimer); scene.closing(false); titleEl.innerHTML = TITLE_OPEN; titleEl.classList.remove('made'); }
-  const cap = $('#labels');
-  ui.resume.addEventListener('click', () => { if (scene.closingOn){ endClosing(); cap.hidden = false; } });
-  ui.guided.addEventListener('click', () => { if (scene.closingOn){ endClosing(); cap.hidden = false; } });
-  document.addEventListener('keydown', e => { if (e.shiftKey && e.key.toLowerCase() === 'c' && !e.target.closest('input')) startClosing(); });
-  if (params.get('closing') === '1') setTimeout(startClosing, 6000);
+  function endClosing(){ clearTimeout(closeT); scene.sunrise(false); ui.title.classList.add('away'); setTimeout(() => { ui.title.innerHTML = TITLE; ui.title.classList.remove('made'); if (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE') ui.title.classList.remove('away'); }, 1200); }
 
-  // ---- dev controls (never in audience display mode) ----
-  if (DEV){ ui.dev.hidden = false; }
+  // ---------- rehearsal controls ----------
   if (!DISPLAY){
-    $('#d-arrive').addEventListener('click', () => adapter.simulateArrival());
-    $('#d-surge').addEventListener('click', () => { let k = 0; const go = () => { adapter.simulateArrival(); if (++k < 5) setTimeout(go, 400); }; go(); });
-    $('#d-dawn').addEventListener('click', () => runDawn(true));
-    $('#d-light').addEventListener('click', () => scene.travel());
+    if (DEV) ui.dev.hidden = false;
+    $('#d-arrive').addEventListener('click', () => store.simulateArrival());
+    $('#d-surge').addEventListener('click', () => { let k = 0; const go = () => { store.simulateArrival(); if (++k < 5) setTimeout(go, 400); }; go(); });
+    $('#d-theme').addEventListener('click', () => { if (busy()) return; const f = scene.items.filter(inFront); for (let i = 0; i < 20 && f.length; i++){ const c = f[Math.floor(Math.random()*f.length)].c, rel = related(c, 2); if (rel.length === 2) return seq.theme(c, rel); } note('Not enough related commitments in view'); });
+    $('#d-dawn').addEventListener('click', () => { if (scene.sunriseOn) endClosing(); runDawn(false); });
     $('#d-close').addEventListener('click', startClosing);
-    $('#d-theme').addEventListener('click', () => { const pool = scene.items.filter(r => !r.pending).map(r => r.c); if (!pool.length) return; const c = pool[Math.floor(Math.random()*pool.length)]; const rel = related(c, 3); if (!rel.length) return note('No related commitments for that theme yet.'); if (QUIET.includes(seq.state)) scene.saveViewpoint(); seq.exploreTheme(c, rel); });
-    ui.dev.querySelectorAll('[data-n]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const p = new URLSearchParams(location.search); p.set('n', a.dataset.n); p.set('dev', '1'); location.search = p.toString(); }));
-    $('#d-fps').textContent = '';
-    let frames = 0, t0 = performance.now(); (function fps(){ frames++; const now = performance.now(); if (now - t0 > 1000){ $('#d-fps').textContent = Math.round(frames*1000/(now - t0)) + ' fps · ' + scene.count + ' prints'; frames = 0; t0 = now; } requestAnimationFrame(fps); })();
+    $('#d-clear').addEventListener('click', () => store.clearLocal().then(() => note('Local entries forgotten. Reload to see the wall without them.')));
+    $$('[data-n]', ui.dev).forEach(a => a.addEventListener('click', e => { e.preventDefault(); const p = new URLSearchParams(location.search); p.set('n', a.dataset.n); p.set('dev', '1'); location.search = p.toString(); }));
+    let frames = 0, t0 = performance.now(); (function fps(){ frames++; const now = performance.now(); if (now - t0 > 1000){ $('#d-fps').textContent = Math.round(frames*1000/(now - t0)) + ' fps · ' + scene.count; frames = 0; t0 = now; } requestAnimationFrame(fps); })();
   }
 
-  // ---- start ----
+  // ---------- begin ----------
   $('#mode').textContent = MODE === 'guided' ? 'Guided display' : 'Personal exploration';
-  // ---- dawn ----
-  const chrome = $('.chrome');
-  function runDawn(replay){
-    const long = MODE === 'guided'; const ms = reduced ? 0 : (long ? 18000 : 7000);
-    if (!replay){ seq.pause(); }
-    if (ms){ scene.dawn(ms); titleEl.classList.add('away'); chrome.classList.add('dawn'); cap.hidden = true;
-      setTimeout(() => { titleEl.classList.remove('away'); }, ms*0.8);
-      setTimeout(() => { chrome.classList.remove('dawn'); cap.hidden = false; }, ms*0.9); }
-    if (!replay) setTimeout(() => { if (MODE === 'guided') seq.start(); else seq.manual(); }, ms ? ms*0.92 : 0);
-  }
-  renderStatus({ state: seq.state, queued: 0 });
-  seq.start();
-  if (DAWN && scene.count) runDawn(false); else if (MODE !== 'guided') seq.manual();
-  // hide the opening veil once the first frames are in
-  setTimeout(() => $('#veil').classList.add('off'), 600);
-  AC.app = { adapter, scene, seq, select };
+  const fonts = document.fonts && document.fonts.load ? Promise.race([Promise.all([document.fonts.load('300 40px Fraunces'), document.fonts.load('400 11px "Geist Mono"')]), new Promise(r => setTimeout(r, 1800))]).catch(() => {}) : Promise.resolve();
+  Promise.all([store.ready.catch(() => store.list()), fonts]).then(([list]) => {
+    scene.reset(Math.max(list.length, 1)); list.forEach(c => scene.add(c, urlOf(c)));
+    ui.count.textContent = fmt(scene.count); ui.empty.hidden = scene.count > 0;
+    renderStatus({ state: seq.state, queued: 0 });
+    setTimeout(() => $('#veil').classList.add('off'), 500);
+    if (DAWN && scene.count) runDawn(true); else { chrome.classList.remove('asleep'); ui.title.classList.remove('away'); begin(); }
+    let find = params.get('find'); try { find = find || sessionStorage.getItem('ac-find'); sessionStorage.removeItem('ac-find'); } catch (e){}
+    if (find) setTimeout(() => { const c = store.list().find(x => x.id === find); if (c) select(c); }, DAWN ? 8000 : 1200);
+    if (params.get('closing') === '1') setTimeout(startClosing, 6000);
+  });
+  AC.app = { store, scene, seq, select, startClosing, endClosing };
 })(window.AC);

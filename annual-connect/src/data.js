@@ -1,13 +1,15 @@
-/* Annual Connect — local data adapter (SAMPLE DATA).
-   Every person, name and commitment here is fictional and generated deterministically from a seed.
-   The adapter exposes the same shape a production adapter will: { list(), subscribe(fn), add(contribution) }.
-   Swap this file for a network adapter later without touching layout, sequencing or rendering. */
+/* Annual Connect — sample content.
+   Everything here is fictional: names, commitments and the pairing of people to places. It exists so the wall can
+   be judged at 30, 300 and 1,000 voices before any real one arrives.
+   Metro codes follow the two-letter convention Equinix uses for its sites. The list and its coordinates are
+   illustrative and approximate; replace with the event's own list. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
 
   function mulberry32(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function hashStr(s){ let h = 2166136261; for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function initials(name){ const p = String(name || '').trim().split(/\s+/).filter(Boolean); if (!p.length) return '·'; return ((Array.from(p[0])[0] || '') + (p.length > 1 ? Array.from(p[p.length - 1])[0] : '')).toUpperCase(); }
 
   const THEMES = [
     { id: 'collaboration', label: 'Collaboration' },
@@ -17,6 +19,15 @@ window.AC = window.AC || {};
     { id: 'colleagues',    label: 'Supporting colleagues' },
     { id: 'listening',     label: 'Listening' }
   ];
+
+  const METROS = [
+    ['DC','Ashburn',39.0,-77.5],['NY','New York',40.7,-74.0],['CH','Chicago',41.9,-87.6],['DA','Dallas',32.8,-96.8],['SV','Silicon Valley',37.4,-122.0],['LA','Los Angeles',34.0,-118.2],['SE','Seattle',47.6,-122.3],['TR','Toronto',43.7,-79.4],['MI','Miami',25.8,-80.2],['AT','Atlanta',33.7,-84.4],['DE','Denver',39.7,-105.0],
+    ['SP','São Paulo',-23.5,-46.6],['RJ','Rio de Janeiro',-22.9,-43.2],['BG','Bogotá',4.7,-74.1],['MX','Mexico City',19.4,-99.1],
+    ['LD','London',51.5,-0.1],['AM','Amsterdam',52.4,4.9],['FR','Frankfurt',50.1,8.7],['PA','Paris',48.9,2.3],['MD','Madrid',40.4,-3.7],['ML','Milan',45.5,9.2],['ZH','Zurich',47.4,8.5],['SK','Stockholm',59.3,18.1],['HE','Helsinki',60.2,24.9],['DB','Dublin',53.3,-6.3],['WA','Warsaw',52.2,21.0],['LS','Lisbon',38.7,-9.1],['IL','Istanbul',41.0,28.9],
+    ['DX','Dubai',25.2,55.3],['AD','Abu Dhabi',24.5,54.4],['MC','Muscat',23.6,58.4],['JN','Johannesburg',-26.2,28.0],['LG','Lagos',6.5,3.4],
+    ['MB','Mumbai',19.1,72.9],['CN','Chennai',13.1,80.3],['SG','Singapore',1.3,103.8],['KL','Kuala Lumpur',3.1,101.7],['JK','Jakarta',-6.2,106.8],['HK','Hong Kong',22.3,114.2],['SH','Shanghai',31.2,121.5],['TY','Tokyo',35.7,139.7],['OS','Osaka',34.7,135.5],['SL','Seoul',37.6,127.0],['MN','Manila',14.6,121.0],['SY','Sydney',-33.9,151.2],['ME','Melbourne',-37.8,145.0],['PE','Perth',-31.9,115.9]
+  ].map(([code, name, lat, lon]) => ({ code, name, lat, lon }));
+  const METRO_BY_CODE = {}; METROS.forEach(m => METRO_BY_CODE[m.code] = m);
 
   const COMMITMENTS = {
     collaboration: [
@@ -123,9 +134,8 @@ window.AC = window.AC || {};
     ]
   };
 
-
-  // Short excerpts for labels in the collective view, written by hand so nothing is truncated mid-thought.
-  // Same order as COMMITMENTS. Full wording is never altered; excerpts are labels only.
+  // Short excerpts for labels in the collective view, written by hand so nothing is cut mid-thought.
+  // Same order as COMMITMENTS. The full wording is never altered; excerpts are labels only.
   const EXCERPTS = {
     collaboration: ['Make collaboration easier','Share work before it is finished','Bring another function in','Work sessions, not status','Write it down','Say yes across teams','Protect the outcome','Introduce two colleagues a week','Open our retrospectives','Ask what they need first','Credit people by name','Hand over properly','Co-own a goal','Dashboards anyone can read','Ask the unasked question'],
     customers: ['Turn feedback into action','Sit with a customer','Say the price first','Conversations, not decks','Bring the customer\'s voice','Call back who left','Ask what if nothing changes','Follow up before the car park','Know their customers','Data centre before contract','Be recommended unprompted','Welcome the complaint','Fix the small thing','Talk before the renewal','Measure by problems solved'],
@@ -135,69 +145,35 @@ window.AC = window.AC || {};
     listening: ['Listen with intention','One more question','Repeat back what I heard','Phone face down','Hear the whole objection','Ask what to stop','Listen before they buy','Let silence work','Sit with the feedback','Ask how, not just what','Read the whole message','One meeting to only listen','Notice the unsaid','Airtime for the quiet idea','Assume they know something']
   };
 
-  // Equinix metros, approximate coordinates, illustrative only until an internal list replaces them.
-  const METROS = [
-    ['Ashburn',39.0,-77.5],['New York',40.7,-74.0],['Chicago',41.9,-87.6],['Dallas',32.8,-96.8],['Silicon Valley',37.4,-122.0],['Los Angeles',34.0,-118.2],['Seattle',47.6,-122.3],['Toronto',43.7,-79.4],['Miami',25.8,-80.2],['Atlanta',33.7,-84.4],['Denver',39.7,-105.0],
-    ['São Paulo',-23.5,-46.6],['Rio de Janeiro',-22.9,-43.2],['Bogotá',4.7,-74.1],['Mexico City',19.4,-99.1],
-    ['London',51.5,-0.1],['Amsterdam',52.4,4.9],['Frankfurt',50.1,8.7],['Paris',48.9,2.3],['Madrid',40.4,-3.7],['Milan',45.5,9.2],['Zurich',47.4,8.5],['Stockholm',59.3,18.1],['Helsinki',60.2,24.9],['Dublin',53.3,-6.3],['Warsaw',52.2,21.0],['Lisbon',38.7,-9.1],['Istanbul',41.0,28.9],
-    ['Dubai',25.2,55.3],['Abu Dhabi',24.5,54.4],['Muscat',23.6,58.4],['Johannesburg',-26.2,28.0],['Lagos',6.5,3.4],
-    ['Mumbai',19.1,72.9],['Chennai',13.1,80.3],['Singapore',1.3,103.8],['Kuala Lumpur',3.1,101.7],['Jakarta',-6.2,106.8],['Hong Kong',22.3,114.2],['Shanghai',31.2,121.5],['Tokyo',35.7,139.7],['Osaka',34.7,135.5],['Seoul',37.6,127.0],['Manila',14.6,121.0],['Sydney',-33.9,151.2],['Melbourne',-37.8,145.0],['Perth',-31.9,115.9]
-  ].map(([name, lat, lon]) => ({ name, lat, lon }));
-
   const FIRST = ['Maya','Daniel','Priya','Tomás','Aisha','Noah','Mei','Lukas','Fatima','Jonas','Sofia','Kwame','Hanna','Rafael','Yuki','Amara','Elias','Ingrid','Omar','Leila','Mateo','Chioma','Arjun','Nadia','Felix','Zara','Ibrahim','Clara','Ravi','Esme','Kenji','Lucía','Samuel','Anya','Tariq','Greta','Diego','Imani','Oskar','Ha-eun','Bruno','Selin','Idris','Marta','Jin','Rosa','Emeka','Freya','Hugo','Naomi','Adebayo','Elin','Mohammed','Ines','Kai','Beatriz','Yusuf','Sigrid','Andrés','Wren'];
   const LAST = ['Chen','Reyes','Okafor','Lindqvist','Haddad','Fischer','Nakamura','Adeyemi','Rossi','Kowalski','Rahman','Park','Marín','Berg','Ito','Demir','Novak','Mensah','Silva','Andersson','Khan','Moreau','Tanaka','Dubois','Kim','Varga','Abebe','Costa','Nguyen','Bauer','Osei','Jensen','Sato','Ferreira','Hussain','Laurent','Petrov','Ahmed','Larsen','Mwangi','Schneider','Yilmaz','Oliveira','Shah','Weber','Santos','Diallo','Romano','Kaur','Olsen'];
 
-  function makeSample(count, seed){
-    const rng = mulberry32(seed || 2027);
-    const out = [];
-    const usedNames = new Set();
-    const perTheme = {}; THEMES.forEach(t => perTheme[t.id] = 0);
-    const base = Date.now() - 1000*60*60*9; // arrivals spread over the last nine hours
-    for (let i = 0; i < count; i++){
-      let name;
-      do { name = FIRST[Math.floor(rng()*FIRST.length)] + ' ' + LAST[Math.floor(rng()*LAST.length)]; } while (usedNames.has(name) && usedNames.size < FIRST.length*LAST.length*0.6);
-      usedNames.add(name);
-      const theme = THEMES[Math.floor(rng()*THEMES.length)];
-      const list = COMMITMENTS[theme.id];
-      const ti = (perTheme[theme.id]++ + Math.floor(rng()*3)) % list.length; const text = list[ti]; const ex = EXCERPTS[theme.id][ti];
-      const id = 'c' + (1000 + i).toString(36) + '-' + hashStr(name + text).toString(36).slice(0, 4);
-      const hasPortrait = rng() < 0.78;
-      out.push({
-        id, displayName: name, commitment: text, excerpt: ex, themeIds: [theme.id], metro: METROS[Math.floor(rng()*METROS.length)].name,
-        portrait: hasPortrait ? { pool: Math.floor(rng()*1e6) } : null,   // resolved against the demo pool by the app
-        submittedAt: base + Math.floor(rng()*1000*60*60*9),
-        eligible: true
-      });
-    }
-    out.sort((a, b) => a.submittedAt - b.submittedAt);
-    return out;
-  }
-
-  function createLocalAdapter(opts){
-    const count = (opts && opts.count != null) ? opts.count : 300;
-    let items = makeSample(count, (opts && opts.seed) || 2027);
-    const subs = new Set();
-    let serial = 0;
-    const rng = mulberry32(99 + count);
+  function one(rng, id, used, perTheme, submittedAt, portraitShare){
+    let name, guard = 0;
+    do { name = FIRST[Math.floor(rng()*FIRST.length)] + ' ' + LAST[Math.floor(rng()*LAST.length)]; } while (used && used.has(name) && ++guard < 40);
+    if (used) used.add(name);
+    const theme = THEMES[Math.floor(rng()*THEMES.length)];
+    const list = COMMITMENTS[theme.id];
+    const ti = perTheme ? (perTheme[theme.id]++ + Math.floor(rng()*3)) % list.length : Math.floor(rng()*list.length);
     return {
-      kind: 'local-sample',
-      themes: THEMES,
-      list(){ return items.slice(); },
-      subscribe(fn){ subs.add(fn); return () => subs.delete(fn); },
-      /* Simulated arrival. Not a connected submission system. */
-      simulateArrival(){
-        const theme = THEMES[Math.floor(rng()*THEMES.length)];
-        const list = COMMITMENTS[theme.id];
-        const name = FIRST[Math.floor(rng()*FIRST.length)] + ' ' + LAST[Math.floor(rng()*LAST.length)];
-        const ti = Math.floor(rng()*list.length); const text = list[ti];
-        const c = { id: 'new' + (++serial).toString(36) + '-' + hashStr(name + Date.now()).toString(36).slice(0, 4), displayName: name, commitment: text, excerpt: EXCERPTS[theme.id][ti], themeIds: [theme.id], metro: METROS[Math.floor(rng()*METROS.length)].name, portrait: rng() < 0.8 ? { pool: Math.floor(rng()*1e6) } : null, submittedAt: Date.now(), eligible: true, isNew: true };
-        items = items.concat([c]);
-        subs.forEach(fn => fn({ type: 'added', contribution: c }));
-        return c;
-      },
-      setEligible(id, eligible){ items = items.map(c => c.id === id ? Object.assign({}, c, { eligible }) : c); subs.forEach(fn => fn({ type: 'changed', id })); }
+      id: id + '-' + hashStr(name + list[ti]).toString(36).slice(0, 4),
+      displayName: name, commitment: list[ti], excerpt: EXCERPTS[theme.id][ti], themeIds: [theme.id],
+      metro: METROS[Math.floor(rng()*METROS.length)].code,
+      portrait: rng() < portraitShare ? { pool: Math.floor(rng()*1e6) } : null,
+      submittedAt, eligible: true, sample: true
     };
   }
 
-  AC.data = { THEMES, METROS, createLocalAdapter, hashStr, mulberry32 };
+  function makeSample(count, seed){
+    const rng = mulberry32(seed || 2027), out = [], used = new Set(), perTheme = {};
+    THEMES.forEach(t => perTheme[t.id] = 0);
+    const base = Date.now() - 1000*60*60*9;
+    for (let i = 0; i < count; i++) out.push(one(rng, 'c' + (1000 + i).toString(36), used, perTheme, base + Math.floor(rng()*1000*60*60*9), 0.78));
+    out.sort((a, b) => a.submittedAt - b.submittedAt);
+    return out;
+  }
+  let serial = 0; const liveRng = mulberry32(99);
+  function makeArrival(){ return one(liveRng, 'sim' + (++serial).toString(36) + Date.now().toString(36).slice(-3), null, null, Date.now(), 0.8); }
+
+  AC.data = { THEMES, METROS, METRO_BY_CODE, makeSample, makeArrival, hashStr, mulberry32, initials };
 })(window.AC);

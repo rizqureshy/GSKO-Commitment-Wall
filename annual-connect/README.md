@@ -1,115 +1,155 @@
-# Annual Connect — a living constellation of commitments
+# Annual Connect — the orbit
 
-Milestone One: the visual and interaction prototype. A spatial constellation of portraits and commitments
-that runs itself on a conference screen and can be explored by hand on a laptop, tablet or phone.
+A wall of commitments for a conference, reworked from first principles on the branch `annual-connect-orbit`.
+
+**The idea.** The people who commit form a ring around the Earth, and we watch from just above it. The ring
+comes up over the curve of the planet, passes beneath us and carries on round the far side. Below, the world
+turns in the dark and its cities are lit. Fifteen hundred people close the ring all the way round.
+
+Everything else follows from that one picture:
+
+| The brief asked for | Here it is |
+|---|---|
+| All of us | The ring. Distant people are small because they are far, and the planet hides those on the other side. |
+| One promise | A print lifts out of the ring and is held in front of us, in colour, beside the words. A line runs down to the place they work. |
+| A shared intention | Three prints held side by side, each from a different place, with the three promises in full. |
+| Someone joins | A light rises from their city, becomes a portrait, and takes a place in the ring. |
+| The start of the day | Dawn: stars, then the limb of the planet, then city lights, then the ring arriving over the horizon. |
+| The end of the day | The closing: the sun comes up on the ring, every print is gilded, and the title changes to "Made." |
+
+Nothing is decoration. The guided display even takes its order from the planet: people whose part of the world
+is in view below are featured first, so the turning Earth decides who is next, and everyone's place comes round.
 
 ## Run it
 
-No build step is required for development. Serve the folder with any static server and open `index.html`:
-
 ```
-npx serve .          # or python3 -m http.server
+cd annual-connect
+python3 -m http.server 8080        # or: npx serve .
 ```
 
-`node tools/build.mjs` writes `dist/index.html`, a single self-contained file with the demo portrait pool
-embedded, and copies it to `/docs/index.html` at the repository root for GitHub Pages. Either the folder,
-`dist/`, or `/docs` can be deployed to Cloudflare Pages or GitHub Pages as a static site.
+Open `http://localhost:8080/` for the wall and `http://localhost:8080/join.html` for the phone page. There is
+no build step for development and nothing is fetched from another site: three.js, the fonts and the imagery are
+all in this folder.
 
-GitHub Pages: Settings → Pages → Source "Deploy from a branch" → branch `main`, folder `/docs`.
-The page is then at `https://<owner>.github.io/<repository>/` and accepts the URL parameters below.
+`node tools/build.mjs` writes the deployable site to `dist/` and to `/docs` at the repository root (GitHub Pages:
+branch, folder `/docs`), plus a self-contained preview in `dist/preview/`.
 
-### URL parameters
+### Addresses
 
-| Parameter | Values | Meaning |
-|---|---|---|
-| `mode` | `guided` (default on large screens), `explore` (default on touch and narrow screens) | Guided display runs itself; personal exploration waits for the viewer. |
-| `n` | `0`, `30`, `300` (default), `1000`, up to `1200` | Size of the sample dataset. Validation sizes, not attendance claims. |
-| `dev` | `1` | Shows development controls: simulate an arrival, a surge of five, a shared intention, switch dataset size. Shift+D toggles them too. |
-| `display` | `1` | Audience display mode: development controls are never available. |
+| Address | What it is |
+|---|---|
+| `index.html?mode=guided&display=1` | The conference screen. Runs itself. No rehearsal controls, no "Add yours" link. |
+| `index.html?mode=explore` | Personal exploration. Default on touch devices and narrow windows. |
+| `join.html` | The phone page: add a commitment. |
+| `index.html?find=<id>` | Opens the wall on one person. The phone page's "Find my commitment" link. |
 
-Keyboard: `Escape` closes a promise or dialog, `/` opens search. "All commitments" is the accessible list view.
+Other parameters: `n=0|30|300|1000|1500` sample size · `dev=1` rehearsal controls (also Shift+D) · `dawn=0` skip
+the dawn · `closing=1` start the closing after six seconds.
 
-## What is real and what is simulated
+### Keys
 
-- **Sample data.** Every name and commitment is fictional and generated deterministically in `src/data.js`.
-  Nothing is connected to a submission system. "Simulate arrival" adds a fictional person locally.
-- **Portrait pool.** Twelve portraits, generated with an image model for this prototype, graded to one
-  monochrome treatment. They are reused across the sample people with per-print mirroring and tonal
-  variation, and the pool is disclosed here on purpose. No real staff photographs are used.
-- **Themes** are assigned explicitly in the sample data. There is no live clustering. Related commitments
-  in "A shared intention" share an assigned theme and are chosen by spatial proximity.
+`←` `→` move along the ring · `/` find · `Esc` close · `Shift+C` the closing · `Shift+D` rehearsal controls.
 
-## Architecture
+## How it behaves
+
+- **One state at a time.** `GUIDED_OVERVIEW`, `GUIDED_FOCUS`, `GUIDED_THEME`, `GUIDED_ARRIVAL`, `MANUAL_EXPLORE`,
+  `MANUAL_FOCUS`, `PAUSED`. One timer at a time; stale callbacks are dropped by a token.
+- **A hand always wins.** Selecting, searching, scrolling, dragging or an arrow key suspends the guided sequence.
+  It resumes only through "Guided view" or "Resume guided view".
+- **Scrolling moves the people, not the camera.** One shared progress value turns the whole ring. It follows the
+  hand with easing and no momentum, and stays where it is left. The camera does not travel.
+- **Reading is not disturbed.** A featured print is lifted out of the ring, so the ring can keep flowing behind
+  it without the print going anywhere. A promise the viewer opened stays until they close it. Closing puts the
+  print back and leaves the ring exactly where it was.
+- **Arrivals queue.** On the guided display a newcomer waits for the current feature to finish. In a surge, up
+  to three are introduced together and the rest are counted. In a personal session an arrival is a quiet line of
+  text and a new print rising into place.
+- **Fair rotation.** Nobody is featured twice until the available pool has been round. Nothing is weighted by
+  seniority, appearance or reactions.
+- **Stable places.** A person's place in the ring comes from their id and theme alone. The arc the ring occupies
+  is fixed when the wall opens, so one person joining never moves another.
+- **Timing defaults** (in `src/sequencer.js`): 10–15 s between features · 2 s lift · reading time
+  `max(12, 5 + words/2.5)` s · 1.8 s return · 4.5 s breath · 16 s for a shared intention · 11 s for an arrival.
+- **Reduced motion.** No dawn, a still ring and planet, immediate lifts. Every view and control remains. There
+  is also a Motion button on the page.
+
+## What is real and what is not
+
+| | |
+|---|---|
+| **People and promises** | Fictional. Generated in `src/data.js` so the wall can be judged at 30, 300, 1,000 and 1,500. |
+| **Portraits** | Twelve generated sample portraits, reused across the sample people with mirroring and per-print toning. This pool is disclosed here on purpose; no real staff photographs are used. About one in five sample people has no portrait and shows initials instead. |
+| **Themes** | Assigned in the sample data. There is no clustering. "A shared intention" shows people who carry the same assigned theme, and never rewrites anyone's words. |
+| **Metros** | Forty-seven places with two-letter codes in the style Equinix uses. The list and coordinates are illustrative and approximate (`METROS` in `src/data.js`). Sample people are assigned one at random. |
+| **The Earth** | NASA Blue Marble and Black Marble imagery (public domain), via the `three-globe` example assets. City lights are redrawn as points in the shader so they hold up at close range. The orbit is inclined 40° so the ground track crosses lit continents. Not to scale. |
+| **Submissions** | Real, but local. The phone page saves to this browser only (IndexedDB) and tells a wall open in the same browser. It proves the journey on one machine. Nothing is sent anywhere. |
+| **"Simulate arrival"** | A fictional person added locally. Not a submission. |
+| **Not built** | A server, storage shared between devices, organiser sign-in and moderation, a retention period, the QR code, a text filter. See "Going live". |
+
+## The phone journey
+
+Name and commitment, optionally a place and a theme, optionally a portrait from the camera or the library, a live
+preview of the print as it will hang in the ring, the display notice, then a confirmed save and a personal
+"Find my commitment" link.
+
+- The photo is opened with its orientation respected, cropped to the print and re-encoded on the device at
+  640×960. Re-encoding is also what removes the camera's metadata: location, device and time are not kept.
+- No portrait is an equal choice: initials, set like a name plate.
+- One id is fixed for the whole draft, so a double press or a retry cannot create a second person.
+- The page says so plainly when a file is not a readable photo, when a photo is too large, or when saving fails.
+- Text is always placed as text, never as markup, on both pages.
+- No face recognition and no inference about anyone.
+
+The wording of the display notice is a placeholder for the event owner to replace, and the retention period is
+theirs to set; neither is decided here.
+
+## Files
 
 | File | Responsibility |
 |---|---|
-| `src/data.js` | Data adapter. `createLocalAdapter()` exposes `list()`, `subscribe()`, `simulateArrival()`, `setEligible()`. Replace with a network adapter later without touching the rest. |
-| `src/layout.js` | Deterministic home positions from contribution id and theme. Stable across revisits, resizes and arrivals. |
-| `src/sequencer.js` | Presentation state machine: `GUIDED_OVERVIEW`, `GUIDED_FOCUS`, `GUIDED_THEME`, `GUIDED_ARRIVAL`, `MANUAL_EXPLORE`, `MANUAL_FOCUS`, `PAUSED`. One timer at a time, fair rotation, arrival queue. Timing defaults live in `TIMING`. |
-| `src/scene.js` | three.js rendering. One instanced draw call for all portraits, depth fade, dimming, occlusion handling, bounded camera tweens, viewpoint save and restore. |
-| `src/app.js` | DOM wiring: the four views, search, list view, modes, input, reduced motion, development controls. |
+| `src/data.js` | Sample people, promises, themes and metros. |
+| `src/store.js` | The seam to storage: `list`, `subscribe`, `submit`, `setEligible`. The prototype implementation lives here; the wall and the phone page talk only to this interface. |
+| `src/orbit.js` | The geometry: the ring, a person's place in it, the viewpoint, the stage. |
+| `src/sequencer.js` | Who is on stage and when. |
+| `src/scene.js` | Rendering: Earth, air, stars, metros, the crowd in one instanced draw, the stage, dawn and sunrise. |
+| `src/app.js` | The wall page: views, input, search, the plain list, arrivals, dawn, the closing. |
+| `src/join.js`, `join.html` | The phone page. |
+| `tools/build.mjs` | Static site and self-contained preview. |
 
-The focused commitment is always real DOM text, never canvas, so it is readable, selectable and
-available to assistive technology.
+The focused commitment, the names and the plain list are real text in the page, not pixels in the canvas.
 
-## The stream
+## Going live
 
-A band of portraits rises small out of a planet horizon on the far left, runs across the frame and bends
-forward toward the viewer on the right, where the prints are large, layered and softly out of focus at the
-very front. Each person has a deterministic phase and offset in the stream; nothing is recalculated when it
-moves. One shared progress value advances the whole procession; prints fade out past the viewer and re-enter
-at the horizon, so the loop is seamless.
+The experience does not change; `src/store.js` does. Replace its prototype implementation with calls to the
+event's own service, keeping the same four functions:
 
-In guided view the stream advances slowly on its own (`STREAM_PERIOD` in `src/layout.js`). The mouse wheel, a
-trackpad, a touch drag, or the left and right arrow keys move it forward and back with gentle easing and no
-momentum; doing so takes manual control and pauses the guided sequence, and the stream then holds where you
-leave it. Selecting a portrait stops the stream and brings that commitment forward; closing it restores the
-exact position. "Resume guided view" restarts the automatic journey. Automatic features are drawn only from
-the readable front of the stream. The camera stays broadly still.
+1. **Static hosting** for these files.
+2. **One small service** with: submit (idempotent on the client's id), list eligible contributions, serve
+   portraits, an event stream or poll for arrivals, and organiser-only hide and remove.
+3. **Storage** for rows and for portraits, originals kept apart from display copies.
+4. **Organiser access** behind the company's sign-in.
 
-## Choreography (branch `annual-connect-magic`)
+Cloudflare Pages, a Worker, D1 and R2 fit this exactly and were the plan discussed earlier; any equivalent does.
+Before the event: the real display and its browser, real phones, a burst of arrivals, a dropped connection (the
+wall should keep showing the last collection it had), and the display notice signed off by its owner.
 
-Five moments layered on the stream. All of them use one extra per-print light channel and one horizon uniform;
-none of them add particles or decoration.
+## Checked
 
-- **Dawn.** On load the screen is dark except the horizon rim. The rim brightens, the prints come up along the
-  stream from the horizon to the front, and the title and controls arrive last. Eighteen seconds on the guided
-  display, seven in personal exploration, none with reduced motion. `?dawn=0` skips it. The guided sequence
-  starts when dawn ends. Development control: Replay dawn.
-- **The travelling light.** A warm pulse leaves the horizon (which flares a little) and runs the length of the
-  stream in about eleven seconds, once a minute or so while nothing is featured. Development control:
-  Travelling light.
-- **The crowd makes way.** When a promise is featured, the prints around it move aside so the chosen portrait
-  has room, and close again on exit. Occlusion fading is kept for anything strictly in front.
-- **The stage.** A featured promise no longer stops the stream or moves the camera. The chosen print lifts out
-  of the flow onto a stage in front of the camera, right of centre (upper half on a phone), while the text
-  takes the title's place on the left and the stream keeps flowing behind, quieter. Closing lowers the print
-  back into its slot, wherever the stream has carried it. Shared intentions still frame the group in place.
-- **The closing.** Shift+C, `?closing=1`, or the development control. The stream stops, every print lights in
-  turn from the horizon to the front over nine seconds and stays faintly lit, and the title becomes
-  "Our commitments. Made." Resume guided view ends it.
+Driven in headless Chromium with real clicks, scrolls, keys and a phone-page submission, on this build:
 
-## The Earth and colour (branch `annual-connect-earth`)
+- the ring moves untouched; automatic features come from the readable front; the ring flows during a feature
+- a scroll takes over; forward advances and holds; backward returns to the same place
+- a click brings the right person and their whole promise forward; an arrival does not interrupt; Escape closes
+  and the ring is exactly where it was; nothing automatic happens until guided view is resumed
+- search finds someone on the far side and brings their place round
+- a shared intention shows three people with the same theme
+- a surge of five is queued and introduced as a group
+- places are identical on a revisit
+- arrows, slash and Escape; the plain list holds everyone
+- reduced motion; an empty collection; every portrait failing to load
+- a 275-character promise with a 42-character name, whole and unscrolled, on a wide screen and a phone
+- phone: no sideways overflow, targets of 44 px or more
+- 30, 300, 1,000 and 1,500 people; a triple-pressed submit stores one entry; it survives a reload
 
-- **Night Earth.** The horizon is a globe wrapped in NASA night-lights imagery (public domain, via the three.js
-  example textures), turning once every nine minutes, with a sunrise along its left limb. The dawn moment and
-  the travelling light both act on it through the same rim value.
-- **Metros.** Equinix metros appear as brighter, slowly pulsing points among the city lights. Their coordinates
-  are approximate and illustrative until an internal list replaces them (`METROS` in `src/data.js`). Each
-  sample person is assigned a metro; it shows after the theme in the focus panel. When a person is featured,
-  their metro brightens and a hair-thin line rises from it to the lifted portrait, if the metro is on the
-  visible side of the globe.
-- **Colour.** The portrait pool is now colour, graded to one muted treatment. The crowd is rendered monochrome
-  in the shader; a person comes into colour as they lift onto the stage, and returns to monochrome as they
-  rejoin the stream.
-
-## Motion contract (defaults, for tuning)
-
-Overview gap 10–15 s · focus transition 2 s · reading time `max(12, 5 + words/2.5)` s · return 1.8 s ·
-breathing interval 4.5 s · shared intention 16 s · arrival 11 s. Manual input always wins; automation
-resumes only through "Resume guided view" or "Guided view".
-
-## Next milestones
-
-Two: real mobile submission journey, image processing, durable storage, display eligibility, arrival feed,
-personal links. Three: event readiness on the actual display hardware.
+Frame rate was only measured in software rendering without a GPU (about 20 frames a second at every size), which
+says nothing useful about a real display. Measure it on the event hardware.

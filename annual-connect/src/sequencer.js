@@ -1,124 +1,72 @@
-/* Annual Connect — presentation state machine and guided sequencer.
-   States: GUIDED_OVERVIEW, GUIDED_FOCUS, GUIDED_THEME, GUIDED_ARRIVAL, MANUAL_EXPLORE, MANUAL_FOCUS, PAUSED.
-   One timer at a time. Manual input always wins. Arrivals queue and never interrupt reading. */
+/* Annual Connect — who is on stage, and when.
+   One state at a time, one timer at a time. A hand on the wall always wins: selecting, searching or scrolling
+   suspends the guided sequence until it is resumed on purpose. Arrivals wait their turn and never interrupt
+   someone who is being read. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
 
   const TIMING = {
-    overviewGap: [10000, 15000],   // ms between automatic features when nothing is active
-    focusIn: 2000,                 // ms focus transition
-    returnOut: 1800,               // ms return transition
-    breathe: 4500,                 // ms collective breathing after a return
-    themeHold: 16000,              // ms for a shared intention
-    arrivalHold: 11000,            // ms for a single arrival
-    readTime(text){ const words = String(text).trim().split(/\s+/).length; return Math.max(12, 5 + words/2.5)*1000; }
+    gap: [10000, 15000],          // between features, when nothing is on stage
+    lift: 2000,                   // a print rising to the stage
+    lower: 1800,                  // and returning
+    breathe: 4500,                // the collective alone, after a return
+    theme: 16000,                 // a shared intention
+    arrival: 11000,               // someone joins
+    arrivalLift: 4200,
+    read(text){ const words = String(text).trim().split(/\s+/).length; return Math.max(12, 5 + words/2.5)*1000; }
   };
 
-  function createSequencer(opts){
-    const { getPool, getRelated, onEnter, onExit, random } = opts;
-    const rnd = random || Math.random;
-    let state = 'GUIDED_OVERVIEW';
-    let prevState = null;
-    let timer = 0;
-    let token = 0;              // invalidates stale callbacks
-    let featured = [];          // ids featured in this rotation
-    let recentThemes = [];
-    const arrivals = [];        // queued arrival ids
-    let current = null;         // { kind, ids }
-    let manualSince = 0;
-    const listeners = new Set();
-    let stepCounter = 0;
+  function create(opts){
+    const { pool, prefer, related, onEnter, onExit } = opts; const rnd = opts.random || Math.random;
+    let state = 'GUIDED_OVERVIEW', current = null, timer = 0, token = 0, step = 0; let featured = []; const queue = []; const subs = new Set();
+    const emit = () => subs.forEach(fn => fn({ state, current, queued: queue.length }));
+    const clear = () => { clearTimeout(timer); timer = 0; token++; };
+    const later = (ms, fn) => { const mine = token; timer = setTimeout(() => { if (mine === token) fn(); }, ms); };
+    const go = (s, cur) => { state = s; current = cur || null; emit(); };
+    const guided = () => state.startsWith('GUIDED');
 
-    function emit(){ listeners.forEach(fn => fn({ state, current, queued: arrivals.length })); }
-    function clear(){ clearTimeout(timer); timer = 0; token++; }
-    function later(ms, fn){ const my = token; timer = setTimeout(() => { if (my !== token) return; fn(); }, ms); }
-    function between(a){ return a[0] + rnd()*(a[1] - a[0]); }
+    /* Fair rotation: nobody twice until the available pool has been round. Those whose part of the world is in
+       view below are preferred, which means the turning planet decides the order, not anyone's rank. */
+    function next(){
+      const all = pool(); if (!all.length) return null;
+      let fresh = all.filter(c => !featured.includes(c.id)); if (!fresh.length){ featured = featured.slice(-Math.floor(all.length/3)); fresh = all.filter(c => !featured.includes(c.id)); if (!fresh.length) fresh = all; }
+      const near = prefer ? fresh.filter(prefer) : []; const from = near.length && rnd() < 0.8 ? near : fresh;
+      return from[Math.floor(rnd()*from.length)];
+    }
+    const mark = ids => ids.forEach(id => { if (!featured.includes(id)) featured.push(id); });
 
-    function pickNext(){
-      const pool = getPool().filter(c => c.eligible);
-      if (!pool.length) return null;
-      let candidates = pool.filter(c => !featured.includes(c.id));
-      if (!candidates.length){ featured = []; candidates = pool; }
-      return candidates[Math.floor(rnd()*candidates.length)];
+    function overview(gap){ go('GUIDED_OVERVIEW'); onEnter('overview'); later(gap == null ? TIMING.gap[0] + rnd()*(TIMING.gap[1] - TIMING.gap[0]) : gap, advance); }
+    function leave(kind, after){ onExit(kind); later(TIMING.lower, () => overview(after)); }
+    function advance(){
+      if (!guided()) return; step++;
+      if (queue.length) return arrival();
+      const c = next(); if (!c) return overview();
+      if (step % 4 === 0){ const rel = related(c, 2); if (rel.length === 2){ mark([c.id, rel[0].id, rel[1].id]); go('GUIDED_THEME', { kind: 'theme', ids: [c.id, rel[0].id, rel[1].id] }); onEnter('theme', { lead: c, related: rel }); return later(TIMING.lift + TIMING.theme, () => leave('theme', TIMING.breathe)); } }
+      mark([c.id]); go('GUIDED_FOCUS', { kind: 'focus', ids: [c.id] }); onEnter('focus', c);
+      later(TIMING.lift + TIMING.read(c.commitment), () => leave('focus', TIMING.breathe));
     }
-
-    function go(next, data){
-      prevState = state; state = next; current = data || null; emit();
-    }
-
-    // ---- guided steps ----
-    function scheduleOverview(gapMs){
-      go('GUIDED_OVERVIEW', null);
-      onEnter('overview');
-      later(gapMs == null ? between(TIMING.overviewGap) : gapMs, nextStep);
-    }
-    function nextStep(){
-      if (state === 'PAUSED' || state.startsWith('MANUAL')) return;
-      stepCounter++;
-      if (arrivals.length){ return showArrival(); }
-      // every fourth feature is a shared intention, if related people exist
-      if (stepCounter % 4 === 0){ const c = pickNext(); if (c){ const rel = getRelated(c, 3); if (rel.length >= 1) return showTheme(c, rel); } }
-      const c = pickNext(); if (!c) return scheduleOverview();
-      showFocus(c);
-    }
-    function showFocus(c){
-      featured.push(c.id);
-      go('GUIDED_FOCUS', { kind: 'focus', ids: [c.id] });
-      onEnter('focus', c);
-      later(TIMING.focusIn + TIMING.readTime(c.commitment), () => { onExit('focus'); later(TIMING.returnOut, () => scheduleOverview(TIMING.breathe)); });
-    }
-    function showTheme(c, rel){
-      const ids = [c.id].concat(rel.map(r => r.id));
-      ids.forEach(id => { if (!featured.includes(id)) featured.push(id); });
-      go('GUIDED_THEME', { kind: 'theme', ids, themeId: c.themeIds[0] });
-      onEnter('theme', { lead: c, related: rel, themeId: c.themeIds[0] });
-      later(TIMING.focusIn + TIMING.themeHold, () => { onExit('theme'); later(TIMING.returnOut, () => scheduleOverview(TIMING.breathe)); });
-    }
-    function showArrival(){
-      // during a surge, introduce up to three together
-      const batch = arrivals.splice(0, Math.min(3, arrivals.length));
-      batch.forEach(id => { if (!featured.includes(id)) featured.push(id); });
-      go('GUIDED_ARRIVAL', { kind: 'arrival', ids: batch, remaining: arrivals.length });
-      onEnter('arrival', { ids: batch, remaining: arrivals.length });
-      later(TIMING.focusIn + TIMING.arrivalHold, () => { onExit('arrival'); later(TIMING.returnOut, () => scheduleOverview(arrivals.length ? 1500 : TIMING.breathe)); });
+    function arrival(){
+      const ids = queue.splice(0, Math.min(3, queue.length)); mark(ids);   // in a surge, up to three are introduced together
+      go('GUIDED_ARRIVAL', { kind: 'arrival', ids }); onEnter('arrival', { ids, remaining: queue.length });
+      later(TIMING.arrivalLift + TIMING.arrival, () => leave('arrival', queue.length ? 1500 : TIMING.breathe));
     }
 
-    // ---- public API ----
-    const api = {
+    return {
       TIMING,
-      get state(){ return state; },
-      get current(){ return current; },
-      get queued(){ return arrivals.length; },
-      onChange(fn){ listeners.add(fn); return () => listeners.delete(fn); },
-      start(){ clear(); scheduleOverview(7000); },
-      /* Any manual intent: suspend automation. */
-      manual(){
-        if (state.startsWith('MANUAL')) return;
-        clear();
-        if (state !== 'GUIDED_OVERVIEW' && state !== 'PAUSED') onExit(current && current.kind, { silent: true });
-        manualSince = Date.now();
-        go('MANUAL_EXPLORE', null);
-      },
-      select(c){
-        clear();
-        if (state !== 'MANUAL_FOCUS' && state !== 'MANUAL_EXPLORE' && state !== 'PAUSED') onExit(current && current.kind, { silent: true });
-        go('MANUAL_FOCUS', { kind: 'focus', ids: [c.id], manual: true });
-        onEnter('focus', c, { manual: true });
-      },
-      close(){
-        clear();
-        if (current) onExit(current.kind);
-        go('MANUAL_EXPLORE', null);
-      },
-      resume(){ clear(); featured = featured.slice(-Math.floor(getPool().length*0.5)); scheduleOverview(TIMING.breathe); },
-      pause(){ clear(); if (current) onExit(current.kind, { silent: true }); go('PAUSED', null); },
-      enqueueArrival(id){ arrivals.push(id); emit(); if (state === 'GUIDED_OVERVIEW'){ clear(); later(1200, nextStep); } },
-      /* Manual theme exploration: show the group but under manual control. */
-      exploreTheme(c, rel){ clear(); go('MANUAL_FOCUS', { kind: 'theme', ids: [c.id].concat(rel.map(r => r.id)), themeId: c.themeIds[0], manual: true }); onEnter('theme', { lead: c, related: rel, themeId: c.themeIds[0] }, { manual: true }); }
+      get state(){ return state; }, get current(){ return current; }, get queued(){ return queue.length; },
+      onChange(fn){ subs.add(fn); return () => subs.delete(fn); },
+      start(delay){ clear(); overview(delay == null ? 7000 : delay); },
+      resume(){ clear(); if (current) onExit(current.kind); overview(TIMING.breathe); },
+      pause(){ clear(); if (current) onExit(current.kind); go('PAUSED'); },
+      /* any deliberate touch */
+      manual(){ if (state.startsWith('MANUAL')) return; clear(); if (current) onExit(current.kind); go('MANUAL_EXPLORE'); },
+      select(c){ clear(); if (current && current.kind !== 'focus') onExit(current.kind); mark([c.id]); go('MANUAL_FOCUS', { kind: 'focus', ids: [c.id] }); onEnter('focus', c, { manual: true }); },
+      theme(lead, rel){ clear(); if (current) onExit(current.kind); go('MANUAL_FOCUS', { kind: 'theme', ids: [lead.id].concat(rel.map(r => r.id)) }); onEnter('theme', { lead, related: rel }, { manual: true }); },
+      close(){ clear(); if (current) onExit(current.kind); go('MANUAL_EXPLORE'); },
+      enqueue(id){ queue.push(id); emit(); if (state === 'GUIDED_OVERVIEW'){ clear(); later(1200, advance); } }
     };
-    return api;
   }
 
-  AC.sequencer = { createSequencer, TIMING };
+  AC.sequencer = { create, TIMING };
 })(window.AC);
