@@ -1,11 +1,11 @@
 // Builds dist/index.html: a single self-contained file (scripts inlined, demo portrait pool embedded as data URIs).
 // Usage: node tools/build.mjs            -> dist/index.html for Cloudflare Pages or any static host
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, cpSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(root, 'index.html'), 'utf8');
-const scripts = ['data', 'layout', 'sequencer', 'scene', 'app'].map(n => readFileSync(join(root, 'src', n + '.js'), 'utf8'));
+const scripts = ['data', 'layout', 'sequencer', 'audio', 'scene', 'app'].map(n => readFileSync(join(root, 'src', n + '.js'), 'utf8'));
 const pdir = join(root, 'assets', 'portraits');
 const focus = readdirSync(pdir).filter(f => /^portrait-\d+\.jpg$/.test(f)).sort().map(f => 'data:image/jpeg;base64,' + readFileSync(join(pdir, f)).toString('base64'));
 const atlas = 'data:image/jpeg;base64,' + readFileSync(join(pdir, 'atlas.jpg')).toString('base64');
@@ -21,4 +21,6 @@ writeFileSync(join(root, 'dist', 'artifact.html'), art);
 mkdirSync(join(root, '..', 'docs'), { recursive: true });
 writeFileSync(join(root, '..', 'docs', 'index.html'), out);
 writeFileSync(join(root, '..', 'docs', '.nojekyll'), '');
+// The music is too large to inline, so it travels beside the page at the same relative path.
+if (existsSync(join(root, 'assets', 'music'))) cpSync(join(root, 'assets', 'music'), join(root, '..', 'docs', 'assets', 'music'), { recursive: true });
 console.log('dist/index.html', (out.length/1024).toFixed(0) + ' KB,', focus.length, 'portraits embedded');

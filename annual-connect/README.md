@@ -89,6 +89,28 @@ none of them add particles or decoration.
   turn from the horizon to the front over nine seconds and stays faintly lit, and the title becomes
   "Our commitments. Made." Resume guided view ends it.
 
+## Sound
+
+The wall plays one piece of music, quietly, on a loop.
+
+- **The track.** `assets/music/annual-connect.mp3`: a three-minute instrumental generated with ElevenLabs Music
+  v2.5 through Higgsfield. Prompt: "Uplifting, warm, cinematic instrumental for a conference installation about
+  people making commitments together. A gentle piano motif over soft strings and a light pulsing synth, steady
+  84 bpm, hopeful and human, building slowly without ever becoming loud or dramatic. No vocals, no big drum hits.
+  Soft beginning and soft ending so it can loop seamlessly." Check the licence terms of the generating account
+  before using it at a public event.
+- **Starting it.** Browsers do not allow sound to start by itself. Press **Sound** in the bottom row, or the
+  **M** key. The choice is remembered, and on the next visit the music returns at the first click or key press.
+  On the conference display, the operator presses M once after opening the page.
+- **Behaviour.** A slow fade in and out, a breath across the loop point, a gentle lift during the closing, and a
+  fade away when the page is hidden.
+- **Changing it.** Replace the file, or list several in `TRACKS` at the top of `src/audio.js` to play them in
+  turn. Level and fade times are constants in the same place.
+- **If the file is missing.** A built-in ambient bed, synthesised in the browser, plays instead and the page says
+  so. It is a stand-in, not the score.
+- **Deploying.** The track is too large to inline. The build copies it to `/docs/assets/music/`, beside the
+  page. The single-file `dist/index.html` needs the same folder next to it wherever it is hosted.
+
 ## Motion contract (defaults, for tuning)
 
 Overview gap 10–15 s · focus transition 2 s · reading time `max(12, 5 + words/2.5)` s · return 1.8 s ·

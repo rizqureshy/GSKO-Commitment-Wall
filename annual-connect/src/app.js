@@ -144,6 +144,16 @@ window.AC = window.AC || {};
   ui.full.addEventListener('click', () => { const el = document.documentElement; const f = el.requestFullscreen || el.webkitRequestFullscreen; if (f) f.call(el).catch(() => note('Full screen is not available here.')); });
   ui.motion.addEventListener('click', () => { reduced = !reduced; ui.motion.setAttribute('aria-pressed', String(reduced)); ui.motion.textContent = reduced ? 'Motion off' : 'Motion on'; document.documentElement.classList.toggle('reduced', reduced); });
   if (reduced){ ui.motion.setAttribute('aria-pressed', 'true'); ui.motion.textContent = 'Motion off'; document.documentElement.classList.add('reduced'); }
+
+  // ---- sound: the music starts from a click or a key, never on its own ----
+  const soundBtn = $('#b-sound');
+  const sound = AC.audio.create({ onState(s){ soundBtn.setAttribute('aria-pressed', String(s.on)); soundBtn.textContent = s.on ? 'Sound on' : 'Sound off';
+    if (s.mode === 'bed' && s.on) note('Sound on. No music file found, so a built-in ambient bed is playing.'); if (s.mode === 'none') note(s.label); } });
+  soundBtn.addEventListener('click', () => sound.toggle());
+  document.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.target.closest('input')) sound.toggle(); });
+  document.addEventListener('visibilitychange', () => sound.hidden(document.hidden));
+  // if sound was on last time, bring it back at the first touch, since a browser will not let it start by itself
+  if (sound.wanted()){ const arm = () => { document.removeEventListener('pointerdown', arm, true); document.removeEventListener('keydown', arm, true); if (!sound.on) sound.start(); }; document.addEventListener('pointerdown', arm, true); document.addEventListener('keydown', arm, true); }
   document.addEventListener('keydown', e => { if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input') && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ manualIntent(); scene.scrub(e.key === 'ArrowRight' ? 0.02 : -0.02); } if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
 
   // ---- search ----
@@ -168,13 +178,13 @@ window.AC = window.AC || {};
   let closingTimer = 0;
   function startClosing(){
     if (scene.closingOn) return;
-    seq.pause(); hideFocus(); hideTheme(); scene.release(); scene.hold(); scene.closing(true);
+    seq.pause(); hideFocus(); hideTheme(); scene.release(); scene.hold(); scene.closing(true); sound.swell(1.3);
     titleEl.classList.add('away'); cap.hidden = true;
     clearTimeout(closingTimer);
     closingTimer = setTimeout(() => { titleEl.innerHTML = '<span>Our commitments.</span><span>Made.</span>'; titleEl.classList.add('made'); titleEl.classList.remove('away'); }, reduced ? 200 : 9500);
     note('The closing. Press Resume guided view to continue.');
   }
-  function endClosing(){ clearTimeout(closingTimer); scene.closing(false); titleEl.innerHTML = TITLE_OPEN; titleEl.classList.remove('made'); }
+  function endClosing(){ clearTimeout(closingTimer); scene.closing(false); sound.swell(1); titleEl.innerHTML = TITLE_OPEN; titleEl.classList.remove('made'); }
   const cap = $('#labels');
   ui.resume.addEventListener('click', () => { if (scene.closingOn){ endClosing(); cap.hidden = false; } });
   ui.guided.addEventListener('click', () => { if (scene.closingOn){ endClosing(); cap.hidden = false; } });
@@ -212,5 +222,5 @@ window.AC = window.AC || {};
   if (DAWN && scene.count) runDawn(false); else if (MODE !== 'guided') seq.manual();
   // hide the opening veil once the first frames are in
   setTimeout(() => $('#veil').classList.add('off'), 600);
-  AC.app = { adapter, scene, seq, select };
+  AC.app = { adapter, scene, seq, select, sound };
 })(window.AC);
