@@ -15,7 +15,8 @@ const out = html.replace(/<!-- app-scripts -->[\s\S]*?<!-- \/app-scripts -->/, i
 mkdirSync(join(root, 'dist'), { recursive: true });
 writeFileSync(join(root, 'dist', 'index.html'), out);
 // Artifact variant: claude.ai wraps pages in its own skeleton, so strip ours.
-const art = out.replace(/^[\s\S]*?<head>\s*<meta charset="utf-8">\s*<meta name="viewport"[^>]*>\s*/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '');
+const music = readdirSync(join(root, 'assets', 'music')).filter(f => /\.mp3$/.test(f)).sort().map(f => 'data:audio/mpeg;base64,' + readFileSync(join(root, 'assets', 'music', f)).toString('base64'));
+const art = out.replace('window.AC = window.AC || {}; AC.PORTRAIT_POOL', 'window.AC = window.AC || {}; AC.MUSIC = ' + JSON.stringify(music) + '; AC.PORTRAIT_POOL').replace(/^[\s\S]*?<head>\s*<meta charset="utf-8">\s*<meta name="viewport"[^>]*>\s*/, '').replace(/<\/head>\s*<body>/, '').replace(/<\/body>\s*<\/html>\s*$/, '');
 writeFileSync(join(root, 'dist', 'artifact.html'), art);
 // GitHub Pages: the same single-file build is published from /docs at the repository root.
 mkdirSync(join(root, '..', 'docs'), { recursive: true });

@@ -1,4 +1,4 @@
-/* Annual Connect — layout and stream.
+/* Global Field Kick Off — layout and stream.
    Every contribution gets a deterministic place in the stream from its id and theme: a phase along the flow and an
    offset across it. The stream itself moves: prints rise out of the horizon on the far left, swell into a wave that
    crests near the top of the frame and fills the right of the picture, pass the viewer at lower right, and re-enter

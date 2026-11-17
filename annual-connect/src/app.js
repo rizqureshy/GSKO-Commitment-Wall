@@ -1,4 +1,4 @@
-/* Annual Connect — application layer: wires data, layout, sequencer and scene to the DOM.
+/* Global Field Kick Off — application layer: wires data, layout, sequencer and scene to the DOM.
    Views: ALL OF US (overview), ONE PROMISE (focus), A SHARED INTENTION (theme), SOMEONE JOINS (arrival).
    Modes: guided display (runs itself) and personal exploration (viewer drives). */
 window.AC = window.AC || {};
@@ -26,7 +26,6 @@ window.AC = window.AC || {};
   adapter.list().forEach((c, i, arr) => scene.add(c, false, arr.length));
 
   // ---- helpers ----
-  function excerpt(c, n){ if (c && c.excerpt) return c.excerpt; const text = c && c.commitment || c; let t = String(text).replace(/^I will\s+/i, '').replace(/[.]+$/, ''); const w = t.split(/\s+/); t = w.slice(0, n || 5).join(' '); return t.charAt(0).toUpperCase() + t.slice(1); }
   function related(c, k){
     const me = scene.byId.get(c.id); if (!me) return [];
     return scene.items.filter(r => r.c.id !== c.id && r.c.eligible && !r.pending && r.c.themeIds[0] === c.themeIds[0])
@@ -97,28 +96,7 @@ window.AC = window.AC || {};
   });
   function introduce(rec){ if (!rec.pending && !rec.animateIn) return; rec.pending = false; rec.animateIn = true; rec.bornAt = performance.now(); rec.s = 0.001; rec.zoff = 7; }
 
-  // ---- labels (overview excerpts + theme excerpts) ----
-  const labelPool = []; for (let i = 0; i < 10; i++){ const el = document.createElement('div'); el.className = 'lbl'; el.hidden = true; el.innerHTML = '<span class="lx"></span><span class="ln"></span>'; ui.labels.appendChild(el); labelPool.push(el); }
-  const isHero = r => r.home.t > 0.55 && !!r.c.portrait;
-  const P = { x: 0, y: 0, visible: false, depth: 0, halfH: 0, halfW: 0 };
-  function placeLabels(){
-    const st = seq.state; const r = stage.getBoundingClientRect(); const placed = []; let used = 0;
-    const showOverview = (st === 'GUIDED_OVERVIEW' || st === 'MANUAL_EXPLORE') && r.width > 640;
-    let list;
-    if (showOverview){ list = []; for (const rec of scene.items){ if (!isHero(rec) || rec.alpha < 0.5 || rec.pending) continue; const Q = {}; scene.project(rec, Q); if (!Q.visible || Q.halfH < 46 || Q.x < r.width*0.08 || Q.x > r.width*0.9) continue; if (Q.x < r.width*0.52 && Q.y - Q.halfH*0.35 < r.height*0.36) continue; rec._h = Q.halfH; list.push(rec); } list.sort((a, b) => b._h - a._h); const seen = new Set(); list = list.filter(rec => { const k = rec.c.excerpt || rec.c.commitment; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 6); }
-    else list = (st === 'GUIDED_THEME' || (st === 'MANUAL_FOCUS' && themeRecs.length)) ? themeRecs : [];
-    for (const rec of list){ if (used >= labelPool.length) break; if (rec.alpha < 0.5 || rec.pending) continue; scene.project(rec, P); if (!P.visible || P.depth > 0.9995) continue;
-      const el = labelPool[used]; const w = Math.min(showOverview ? 220 : 190, r.width*0.2), h = showOverview ? 64 : 58;
-      const cands = [[P.x + P.halfW + 16, P.y - P.halfH*0.35], [P.x - P.halfW - 16 - w, P.y - P.halfH*0.35], [P.x - w/2, P.y + P.halfH + 12], [P.x - w/2, P.y - P.halfH - h - 8]];
-      let x = -1, y = -1;
-      for (const [cx, cy] of cands){ if (cx < 12 || cx + w > r.width - 12 || cy < 60 || cy + h > r.height - 84) continue; if (placed.some(b => cx < b.x + b.w && cx + w > b.x && cy < b.y + b.h && cy + h > b.y)) continue; x = cx; y = cy; break; }
-      if (x < 0) continue;
-      placed.push({ x, y, w, h });
-      el.style.transform = 'translate3d(' + Math.round(x) + 'px,' + Math.round(y) + 'px,0)'; el.style.width = w + 'px';
-      el.firstChild.textContent = excerpt(rec.c, showOverview ? 4 : 7); el.lastChild.textContent = showOverview ? '' : rec.c.displayName; el.classList.toggle('big', showOverview && P.halfH > 110); el.hidden = false; used++; }
-    for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
-  }
-  scene.onFrame = () => { placeLabels(); };
+  // The stream carries portraits only. Words appear when a person is brought forward, never over the flow.
 
   // ---- selection, hover, orbit ----
   let down = null, dragged = false;
@@ -145,15 +123,16 @@ window.AC = window.AC || {};
   ui.motion.addEventListener('click', () => { reduced = !reduced; ui.motion.setAttribute('aria-pressed', String(reduced)); ui.motion.textContent = reduced ? 'Motion off' : 'Motion on'; document.documentElement.classList.toggle('reduced', reduced); });
   if (reduced){ ui.motion.setAttribute('aria-pressed', 'true'); ui.motion.textContent = 'Motion off'; document.documentElement.classList.add('reduced'); }
 
-  // ---- sound: the music starts from a click or a key, never on its own ----
+  // ---- sound: a browser will not start it unprompted, so it begins at the first click, tap or key press ----
   const soundBtn = $('#b-sound');
   const sound = AC.audio.create({ onState(s){ soundBtn.setAttribute('aria-pressed', String(s.on)); soundBtn.textContent = s.on ? 'Sound on' : 'Sound off';
-    if (s.mode === 'bed' && s.on) note('Sound on. No music file found, so a built-in ambient bed is playing.'); if (s.mode === 'none') note(s.label); } });
-  soundBtn.addEventListener('click', () => sound.toggle());
-  document.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.target.closest('input')) sound.toggle(); });
+    if (s.mode === 'bed' && s.on) note('Sound on. The music file could not be loaded, so a built-in ambient bed is playing.'); if (s.mode === 'none') note(s.label); } });
+  let armed = sound.wanted();
+  const firstTouch = e => { if (!armed) return; armed = false; if (e.target.closest && e.target.closest('#b-sound')) return; if (e.type === 'keydown' && e.key.toLowerCase() === 'm') return; if (!sound.on) sound.start(); };
+  document.addEventListener('pointerdown', firstTouch, true); document.addEventListener('keydown', firstTouch, true);
+  soundBtn.addEventListener('click', () => { armed = false; sound.toggle(); });
+  document.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.target.closest('input')){ armed = false; sound.toggle(); } });
   document.addEventListener('visibilitychange', () => sound.hidden(document.hidden));
-  // if sound was on last time, bring it back at the first touch, since a browser will not let it start by itself
-  if (sound.wanted()){ const arm = () => { document.removeEventListener('pointerdown', arm, true); document.removeEventListener('keydown', arm, true); if (!sound.on) sound.start(); }; document.addEventListener('pointerdown', arm, true); document.addEventListener('keydown', arm, true); }
   document.addEventListener('keydown', e => { if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.target.closest('input') && (seq.state === 'GUIDED_OVERVIEW' || seq.state === 'MANUAL_EXPLORE')){ manualIntent(); scene.scrub(e.key === 'ArrowRight' ? 0.02 : -0.02); } if (e.key === 'Escape'){ if (!ui.search.hidden) closeSearch(); else if (ui.listDlg.open) ui.listDlg.close(); else closeFocus(); } if (e.key === '/' && !e.target.closest('input')){ e.preventDefault(); openSearch(); } if (e.key.toLowerCase() === 'd' && e.shiftKey && !DISPLAY){ ui.dev.hidden = !ui.dev.hidden; } });
 
   // ---- search ----
@@ -210,7 +189,7 @@ window.AC = window.AC || {};
   // ---- dawn ----
   const chrome = $('.chrome');
   function runDawn(replay){
-    const long = MODE === 'guided'; const ms = reduced ? 0 : (long ? 18000 : 7000);
+    const long = MODE === 'guided'; const ms = reduced ? 0 : (long ? 7000 : 4000);
     if (!replay){ seq.pause(); }
     if (ms){ scene.dawn(ms); titleEl.classList.add('away'); chrome.classList.add('dawn'); cap.hidden = true;
       setTimeout(() => { titleEl.classList.remove('away'); }, ms*0.8);
@@ -220,6 +199,7 @@ window.AC = window.AC || {};
   renderStatus({ state: seq.state, queued: 0 });
   seq.start();
   if (DAWN && scene.count) runDawn(false); else if (MODE !== 'guided') seq.manual();
+  setTimeout(() => { if (armed && !sound.on && !DISPLAY) note('Click anywhere, or press M, for music.'); }, (DAWN && !reduced ? (MODE === 'guided' ? 7000 : 4000) : 0) + 1200);
   // hide the opening veil once the first frames are in
   setTimeout(() => $('#veil').classList.add('off'), 600);
   AC.app = { adapter, scene, seq, select, sound };

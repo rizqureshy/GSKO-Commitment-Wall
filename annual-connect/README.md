@@ -1,4 +1,4 @@
-# Annual Connect — a living constellation of commitments
+# Global Field Kick Off — a living constellation of commitments
 
 Milestone One: the visual and interaction prototype. A spatial constellation of portraits and commitments
 that runs itself on a conference screen and can be explored by hand on a laptop, tablet or phone.
@@ -73,8 +73,7 @@ Five moments layered on the stream. All of them use one extra per-print light ch
 none of them add particles or decoration.
 
 - **Dawn.** On load the screen is dark except the horizon rim. The rim brightens, the prints come up along the
-  stream from the horizon to the front, and the title and controls arrive last. Eighteen seconds on the guided
-  display, seven in personal exploration, none with reduced motion. `?dawn=0` skips it. The guided sequence
+  stream from the horizon to the front, and the title and controls arrive last. Seven seconds on the guided display, four in personal exploration, none with reduced motion. `?dawn=0` skips it. The guided sequence
   starts when dawn ends. Development control: Replay dawn.
 - **The travelling light.** A warm pulse leaves the horizon (which flares a little) and runs the length of the
   stream in about eleven seconds, once a minute or so while nothing is featured. Development control:
@@ -93,23 +92,29 @@ none of them add particles or decoration.
 
 The wall plays one piece of music, quietly, on a loop.
 
-- **The track.** `assets/music/annual-connect.mp3`: a three-minute instrumental generated with ElevenLabs Music
-  v2.5 through Higgsfield. Prompt: "Uplifting, warm, cinematic instrumental for a conference installation about
-  people making commitments together. A gentle piano motif over soft strings and a light pulsing synth, steady
-  84 bpm, hopeful and human, building slowly without ever becoming loud or dramatic. No vocals, no big drum hits.
-  Soft beginning and soft ending so it can loop seamlessly." Check the licence terms of the generating account
-  before using it at a public event.
-- **Starting it.** Browsers do not allow sound to start by itself. Press **Sound** in the bottom row, or the
-  **M** key. The choice is remembered, and on the next visit the music returns at the first click or key press.
-  On the conference display, the operator presses M once after opening the page.
+- **The track.** `assets/music/global-field-kick-off.mp3`: a three-minute instrumental generated with ElevenLabs
+  Music v2.5 through Higgsfield. Prompt: "Uplifting, warm, cinematic instrumental for a conference installation
+  about people making commitments together. A gentle piano motif over soft strings and a light pulsing synth,
+  steady 84 bpm, hopeful and human, building slowly without ever becoming loud or dramatic. No vocals, no big
+  drum hits. Soft beginning and soft ending so it can loop seamlessly." Check the licence terms of the generating
+  account before using it at a public event.
+- **Starting it.** Browsers do not allow sound to start by itself. The music begins at the first click, tap or
+  key press anywhere on the page, and the page says so until then. **Sound** in the bottom row, or the **M** key,
+  turns it off and on; turning it off is remembered. On the conference display the operator clicks once.
 - **Behaviour.** A slow fade in and out, a breath across the loop point, a gentle lift during the closing, and a
   fade away when the page is hidden.
 - **Changing it.** Replace the file, or list several in `TRACKS` at the top of `src/audio.js` to play them in
   turn. Level and fade times are constants in the same place.
-- **If the file is missing.** A built-in ambient bed, synthesised in the browser, plays instead and the page says
-  so. It is a stand-in, not the score.
-- **Deploying.** The track is too large to inline. The build copies it to `/docs/assets/music/`, beside the
-  page. The single-file `dist/index.html` needs the same folder next to it wherever it is hosted.
+- **If it cannot be played as a file.** The page decodes it and loops it through Web Audio. If that fails too, a
+  built-in ambient bed, synthesised in the browser, plays instead and the page says so. It is a stand-in.
+- **Deploying.** The build copies the track to `/docs/assets/music/`, beside the page. The single-file
+  `dist/index.html` needs the same folder next to it wherever it is hosted. The preview build
+  (`dist/artifact.html`, not committed) carries the track inside the page.
+
+## The stream carries pictures only
+
+No excerpts or names float over the stream. Words appear only when a person is brought forward. A shared
+intention is shown as the group of portraits, connected and lit, under the theme's name.
 
 ## Motion contract (defaults, for tuning)
 

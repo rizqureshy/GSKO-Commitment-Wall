@@ -1,15 +1,19 @@
-/* Annual Connect — sound.
+/* Global Field Kick Off — sound.
    The wall plays its music quietly on a loop. Tracks live in assets/music/ and are listed in TRACKS; with more
-   than one they play in turn. If no track can be loaded, a built-in ambient bed plays instead so the Sound
-   control always does something. The bed is synthesised in the browser and is a stand-in, not the score.
+   than one they play in turn. A track is tried three ways, in order: as an ordinary audio element, decoded and
+   looped through Web Audio, and failing both, a built-in ambient bed synthesised in the browser so the Sound
+   control always does something. The bed is a stand-in, not the score.
 
-   Browsers will not start sound without a gesture, so sound always begins from a click or a key press. */
+   Browsers will not start sound without a gesture. So the music starts at the first click, tap or key press
+   anywhere on the page, unless the viewer has turned sound off. */
 window.AC = window.AC || {};
 (function (AC) {
   'use strict';
-  const TRACKS = (AC.MUSIC && AC.MUSIC.length) ? AC.MUSIC : ['assets/music/annual-connect.mp3'];
-  const VOLUME = 0.6, FADE_IN = 3.5, FADE_OUT = 1.4, LOOP_FADE = 2.5;
+  const TRACKS = (AC.MUSIC && AC.MUSIC.length) ? AC.MUSIC : ['assets/music/global-field-kick-off.mp3'];
+  const VOLUME = 0.7, FADE_IN = 3.0, FADE_OUT = 1.4, LOOP_FADE = 2.5;
+  const FORCE_DECODE = /[?&]decode=1/.test(location.search);        // test switch: skip the audio element
   const store = { get(k){ try { return localStorage.getItem(k); } catch (e){ return null; } }, set(k, v){ try { localStorage.setItem(k, v); } catch (e){} } };
+  const nameOf = url => /^data:/.test(url) ? 'Music' : decodeURIComponent(url.split('/').pop().replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' '));
 
   /* ---------- the stand-in bed: a slow, warm progression with a soft pulse and a few high notes ---------- */
   const hz = n => 440*Math.pow(2, (n - 69)/12);                       // MIDI note to frequency
@@ -46,11 +50,20 @@ window.AC = window.AC || {};
     return { schedule };
   }
 
+  function bytesOf(url){
+    if (/^data:/.test(url)){ const b64 = url.slice(url.indexOf(',') + 1), bin = atob(b64), out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return Promise.resolve(out.buffer); }
+    return fetch(url).then(r => { if (!r.ok) throw new Error('missing'); return r.arrayBuffer(); });
+  }
+
   function create(opts){
     const onState = (opts && opts.onState) || (() => {});
-    let ctx = null, master = null, bed = null, bedTimer = 0, bedBase = 0, bedUntil = 0;
-    let el = null, mode = 'off', on = false, level = 0, target = 0, swell = 1, swellNow = 1, raf = 0, last = 0, label = '';
+    let ctx = null, master = null, trackGain = null, src = null, bed = null, bedTimer = 0, bedBase = 0, bedUntil = 0;
+    let el = null, mode = 'off', on = false, level = 0, target = 0, swell = 1, swellNow = 1, raf = 0, last = 0, label = '', attempt = 0;
 
+    function ensureCtx(){
+      if (ctx) return ctx; const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
+      ctx = new C(); master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination); trackGain = ctx.createGain(); trackGain.gain.value = 0; trackGain.connect(ctx.destination); return ctx;
+    }
     function loop(now){
       const dt = Math.min(0.1, (now - last)/1000); last = now;
       const rate = target > level ? 1/FADE_IN : 1/FADE_OUT; level += Math.sign(target - level)*Math.min(Math.abs(target - level), dt*rate);
@@ -58,45 +71,58 @@ window.AC = window.AC || {};
       let v = level*level*VOLUME*swellNow;                             // an eased fade
       if (el && isFinite(el.duration) && el.duration > LOOP_FADE*3){ const left = el.duration - el.currentTime; v *= Math.min(1, el.currentTime/LOOP_FADE + 0.02, left/LOOP_FADE + 0.02); }   // breathe across the loop point
       if (el) el.volume = Math.max(0, Math.min(1, v));
+      if (trackGain) trackGain.gain.value = mode === 'buffer' ? Math.min(1, v) : 0;
       if (master) master.gain.value = mode === 'bed' ? Math.min(1.2, v*1.5) : 0;
       if (level <= 0 && target <= 0){ raf = 0; if (el) el.pause(); if (ctx && ctx.state === 'running') ctx.suspend(); clearInterval(bedTimer); bedTimer = 0; return; }
       raf = requestAnimationFrame(loop);
     }
     const run = () => { if (!raf){ last = performance.now(); raf = requestAnimationFrame(loop); } };
+    const say = () => onState({ on, mode, label });
 
     function startBed(){
       mode = 'bed'; label = 'Built-in ambient bed';
-      if (!ctx){ const C = window.AudioContext || window.webkitAudioContext; if (!C){ mode = 'off'; on = false; target = 0; return onState({ on: false, mode: 'none', label: 'This browser cannot play sound' }); }
-        ctx = new C(); master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination); bed = buildBed(ctx, master); bedBase = ctx.currentTime + 0.1; bedUntil = 0; }
+      if (!ensureCtx()){ mode = 'none'; on = false; target = 0; label = 'This browser cannot play sound'; return say(); }
+      if (!bed){ bed = buildBed(ctx, master); bedBase = ctx.currentTime + 0.1; bedUntil = 0; }
       if (ctx.state !== 'running') ctx.resume();
       const pump = () => { const now = Math.max(0, ctx.currentTime - bedBase), to = now + 1.5; if (to > bedUntil){ bed.schedule(Math.max(bedUntil, now), to, bedBase); bedUntil = to; } };
-      clearInterval(bedTimer); bedTimer = setInterval(pump, 400); pump(); onState({ on: true, mode, label });
+      clearInterval(bedTimer); bedTimer = setInterval(pump, 400); pump(); say();
     }
-
-    function tryTrack(i){
-      if (i >= TRACKS.length) return startBed();
+    /* Second way: decode the file and loop it through Web Audio. Works where an audio element is refused. */
+    function tryDecode(i, mine){
+      if (!ensureCtx()) return tryTrack(i + 1, mine);
+      if (ctx.state !== 'running') ctx.resume();
+      bytesOf(TRACKS[i]).then(buf => new Promise((res, rej) => ctx.decodeAudioData(buf, res, rej))).then(audio => {
+        if (mine !== attempt || !on) return; if (src){ try { src.stop(); } catch (e){} }
+        src = ctx.createBufferSource(); src.buffer = audio; src.loop = true; src.connect(trackGain); src.start(); mode = 'buffer'; label = nameOf(TRACKS[i]); say();
+      }).catch(() => { if (mine === attempt) tryTrack(i + 1, mine); });
+    }
+    /* First way: an ordinary audio element. */
+    function tryTrack(i, mine){
+      if (mine !== attempt) return; if (i >= TRACKS.length) return startBed();
+      if (FORCE_DECODE) return tryDecode(i, mine);
       const a = new Audio(); a.preload = 'auto'; a.loop = TRACKS.length === 1; a.volume = 0; let settled = false;
-      const fail = () => { if (settled) return; settled = true; a.removeAttribute('src'); tryTrack(i + 1); };
+      const fail = () => { if (settled) return; settled = true; a.removeAttribute('src'); tryDecode(i, mine); };
       a.addEventListener('error', fail, { once: true });
-      a.addEventListener('canplay', () => { if (settled) return; settled = true; if (!on) return; el = a; mode = 'track';
-        label = decodeURIComponent(TRACKS[i].split('/').pop().replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' '));
-        a.addEventListener('ended', () => { if (TRACKS.length > 1 && on){ el = null; tryTrack((i + 1) % TRACKS.length); } });
-        Promise.resolve(a.play()).then(() => onState({ on: true, mode, label }), () => { el = null; startBed(); }); }, { once: true });
+      a.addEventListener('canplay', () => { if (settled) return; settled = true; if (!on || mine !== attempt) return; el = a; mode = 'track'; label = nameOf(TRACKS[i]);
+        a.addEventListener('ended', () => { if (TRACKS.length > 1 && on){ el = null; tryTrack((i + 1) % TRACKS.length, attempt); } });
+        Promise.resolve(a.play()).then(say, () => { el = null; tryDecode(i, mine); }); }, { once: true });
       setTimeout(fail, 8000); a.src = TRACKS[i]; a.load();
     }
 
     const api = {
       get on(){ return on; }, get mode(){ return mode; }, get label(){ return label; }, get level(){ return level; },
-      /* Must be called from a click or a key press. */
+      /* Must be called from a click, tap or key press. */
       start(){ if (on) return; on = true; target = 1; store.set('ac-sound', '1'); run();
-        if (el){ Promise.resolve(el.play()).catch(() => {}); onState({ on: true, mode, label }); } else if (mode === 'bed') startBed(); else { onState({ on: true, mode: 'loading', label: 'Loading' }); tryTrack(0); } },
-      stop(){ if (!on) return; on = false; target = 0; store.set('ac-sound', '0'); run(); onState({ on: false, mode, label }); },
+        if (el){ Promise.resolve(el.play()).catch(() => {}); say(); } else if (mode === 'buffer' || mode === 'bed'){ if (ctx && ctx.state !== 'running') ctx.resume(); if (mode === 'bed') startBed(); else say(); }
+        else { mode = 'loading'; label = 'Loading'; say(); tryTrack(0, ++attempt); } },
+      stop(){ if (!on) return; on = false; target = 0; store.set('ac-sound', '0'); run(); say(); },
       toggle(){ if (on) api.stop(); else api.start(); },
       /* A gentle lift for the closing; 1 is normal. */
       swell(v){ swell = v; },
-      wanted(){ return store.get('ac-sound') === '1'; },
+      /* Sound is wanted unless the viewer has turned it off. */
+      wanted(){ return store.get('ac-sound') !== '0'; },
       /* Fade away while the page is hidden, come back when it returns. */
-      hidden(h){ if (!on) return; target = h ? 0 : 1; if (!h){ if (el) Promise.resolve(el.play()).catch(() => {}); if (mode === 'bed') startBed(); } run(); }
+      hidden(h){ if (!on) return; target = h ? 0 : 1; if (!h){ if (el) Promise.resolve(el.play()).catch(() => {}); if (ctx && ctx.state !== 'running') ctx.resume(); if (mode === 'bed') startBed(); } run(); }
     };
     return api;
   }

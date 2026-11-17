@@ -1,4 +1,4 @@
-/* Annual Connect — presentation state machine and guided sequencer.
+/* Global Field Kick Off — presentation state machine and guided sequencer.
    States: GUIDED_OVERVIEW, GUIDED_FOCUS, GUIDED_THEME, GUIDED_ARRIVAL, MANUAL_EXPLORE, MANUAL_FOCUS, PAUSED.
    One timer at a time. Manual input always wins. Arrivals queue and never interrupt reading. */
 window.AC = window.AC || {};
@@ -91,7 +91,7 @@ window.AC = window.AC || {};
       get current(){ return current; },
       get queued(){ return arrivals.length; },
       onChange(fn){ listeners.add(fn); return () => listeners.delete(fn); },
-      start(){ clear(); scheduleOverview(7000); },
+      start(){ clear(); scheduleOverview(4000); },
       /* Any manual intent: suspend automation. */
       manual(){
         if (state.startsWith('MANUAL')) return;

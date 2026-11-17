@@ -1,4 +1,4 @@
-/* Annual Connect — local data adapter (SAMPLE DATA).
+/* Global Field Kick Off — local data adapter (SAMPLE DATA).
    Every person, name and commitment here is fictional and generated deterministically from a seed.
    The adapter exposes the same shape a production adapter will: { list(), subscribe(fn), add(contribution) }.
    Swap this file for a network adapter later without touching layout, sequencing or rendering. */

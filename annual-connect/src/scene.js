@@ -1,4 +1,4 @@
-/* Annual Connect — WebGL scene.
+/* Global Field Kick Off — WebGL scene.
    One InstancedMesh draws every portrait (photo atlas or initials atlas). Depth fade, dimming, highlight and
    occlusion fading are per-instance attributes. Camera moves are bounded tweens; the viewpoint before a focus is
    remembered so closing a promise returns exactly there. Labels are DOM, positioned by projection. */
